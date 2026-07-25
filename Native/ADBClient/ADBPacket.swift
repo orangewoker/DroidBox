@@ -32,10 +32,9 @@ struct ADBPacket: Sendable, Equatable {
 }
 
 extension Data {
-    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { append(contentsOf: $0) } }
+    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) { Swift.withUnsafeBytes(of: value.littleEndian) { append(contentsOf: $0) } }
     func littleEndianUInt32(at offset: Int) -> UInt32 {
         guard offset >= 0, offset + 4 <= count else { return 0 }
         return UInt32(self[offset]) | UInt32(self[offset + 1]) << 8 | UInt32(self[offset + 2]) << 16 | UInt32(self[offset + 3]) << 24
     }
 }
-

@@ -131,7 +131,7 @@ actor ADBClient {
     }
     private func send(_ packet: ADBPacket) async throws {
         guard let connection else { throw ADBClientError.notConnected }
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(content: packet.encoded, completion: .contentProcessed { error in
                 if let error { continuation.resume(throwing: ADBClientError.connectionFailed(error.localizedDescription)) }
                 else { continuation.resume() }
