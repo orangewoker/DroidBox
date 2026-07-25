@@ -19,7 +19,7 @@ enum BinaryXMLParser {
 
     static func parse(_ data: Data) throws -> ManifestInfo {
         if let prefix = String(data: data.prefix(100), encoding: .utf8), prefix.contains("<manifest") { return try parseText(data) }
-        let reader = DataReader(data); guard reader.u16(0) == 0x0003 else { throw DroidBoxError.invalidArchive }
+        let reader = DataReader(data: data); guard reader.u16(0) == 0x0003 else { throw DroidBoxError.invalidArchive }
         var strings: [String] = [], info = ManifestInfo(), offset = Int(reader.u16(2))
         while offset + 8 <= data.count {
             let type = reader.u16(offset), header = Int(reader.u16(offset + 2)), size = Int(reader.u32(offset + 4))

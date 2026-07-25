@@ -15,7 +15,7 @@ final class AppEnvironment {
         do {
             let paths=try AppPaths();self.paths=paths;let library=GameLibrary(paths:paths);self.library=library
             importer=ImportCoordinator(library:library);runtimeManager=RuntimeManager(paths:paths);diagnostics=DiagnosticsService(runtimeManager:runtimeManager)
-            Task { await AppLogger.shared.configure(paths:paths);await AppLogger.shared.log("DroidBox started") }
+            Task { await AppLogger.shared.configure(paths:paths);await AppLogger.shared.log(.default, "DroidBox started") }
         } catch { fatalError("Cannot initialize DroidBox storage: \(error)") }
     }
     func open(_ url: URL) {
@@ -23,4 +23,3 @@ final class AppEnvironment {
         else if ["apk","zip"].contains(url.pathExtension.lowercased()) { importer.start(url:url) }
     }
 }
-
