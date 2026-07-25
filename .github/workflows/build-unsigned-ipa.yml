@@ -1,0 +1,46 @@
+name: Build Unsigned IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, ios]
+  pull_request:
+permissions:
+  contents: write
+concurrency:
+  group: droidbox-ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest stable Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | grep -v beta | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+      - name: Run unit tests
+        run: xcodebuild -project DroidBox.xcodeproj -scheme DroidBox -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' SUPPORTED_PLATFORMS='iphonesimulator iphoneos' CODE_SIGNING_ALLOWED=NO build-for-testing
+      - name: Build unsigned IPA
+        run: chmod +x scripts/*.sh && ./scripts/build-unsigned-ipa.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DroidBox-unsigned-ipa
+          path: dist/*
+      - name: Read version
+        id: version
+        run: echo "version=$(grep MARKETING_VERSION Config/Base.xcconfig | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+      - name: Publish prerelease
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: DroidBox iOS ${{ steps.version.outputs.version }}
+          body: Unsigned DroidBox IPA for LiveContainer or local re-signing.
+          prerelease: true
+          files: |
+            dist/DroidBox-unsigned.ipa
+            dist/DroidBox-${{ steps.version.outputs.version }}-unsigned.ipa
+            dist/DroidBox-unsigned.sha256
+            dist/build-info.json

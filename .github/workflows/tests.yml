@@ -1,0 +1,11 @@
+name: Source Checks
+on: [pull_request, workflow_dispatch]
+jobs:
+  checks:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -project DroidBox.xcodeproj -list
+      - run: plutil -lint Config/*.entitlements
+      - run: test -f DEPENDENCIES.md && test -f THIRD_PARTY_NOTICES.md
+

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["id", "version", "architecture", "downloadURL", "sha256", "size", "license", "minimumAppVersion"],
+  "properties": {
+    "id": {"type": "string"}, "version": {"type": "string"},
+    "architecture": {"const": "arm64"}, "downloadURL": {"type": "string"},
+    "sha256": {"type": "string"}, "size": {"type": "integer", "minimum": 0},
+    "license": {"type": "string"}, "minimumAppVersion": {"type": "string"}
+  }
+}
+

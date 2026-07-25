@@ -1,0 +1,10 @@
+name: Xcode 27 Compatibility
+on: workflow_dispatch
+jobs:
+  compile:
+    runs-on: [self-hosted, macOS, xcode-27]
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version
+      - run: xcodebuild -project DroidBox.xcodeproj -scheme DroidBox -sdk iphoneos CODE_SIGNING_ALLOWED=NO build
+

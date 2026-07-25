@@ -1,0 +1,10 @@
+name: Build Android Runtime
+on: workflow_dispatch
+jobs:
+  manifest-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m json.tool Runtimes/manifests/lineage-arm64-default.json
+      - run: echo "Runtime image publication is blocked until a reproducible pinned Android image build and release URL are supplied." && exit 1
+

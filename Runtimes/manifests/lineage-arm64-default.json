@@ -1,0 +1,11 @@
+{
+  "id": "lineage-arm64-default",
+  "version": "21.0-qemu-2026.07",
+  "architecture": "arm64",
+  "downloadURL": "RELEASE_ASSET_URL_REQUIRED",
+  "sha256": "REQUIRED_AFTER_RUNTIME_BUILD",
+  "size": 0,
+  "license": "Apache-2.0 AND GPL-2.0-or-later",
+  "minimumAppVersion": "1.0.0"
+}
+

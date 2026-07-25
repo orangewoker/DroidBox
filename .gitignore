@@ -1,0 +1,11 @@
+.DS_Store
+DerivedData/
+build/
+dist/
+release/
+Runtimes/*.zip
+Runtimes/*.qcow2
+Runtimes/*.img
+*.xcuserstate
+xcuserdata/
+
