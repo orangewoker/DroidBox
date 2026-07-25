@@ -20,7 +20,16 @@ jobs:
           sudo xcode-select -s "$XCODE/Contents/Developer"
           xcodebuild -version
       - name: Run unit tests
-        run: xcodebuild -project DroidBox.xcodeproj -scheme DroidBox -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build-for-testing
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next((x["udid"] for xs in d.values() for x in xs if x["name"].startswith("iPhone")), ""))')"
+          if [ -z "$DEVICE_ID" ]; then
+            DEVICE_TYPE="$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys; print(next(x["identifier"] for x in json.load(sys.stdin)["devicetypes"] if x["name"].startswith("iPhone")))')"
+            RUNTIME="$(xcrun simctl list runtimes available -j | python3 -c 'import json,sys; xs=[x for x in json.load(sys.stdin)["runtimes"] if x["platform"]=="iOS"]; print(xs[-1]["identifier"])')"
+            DEVICE_ID="$(xcrun simctl create DroidBox-CI "$DEVICE_TYPE" "$RUNTIME")"
+          fi
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcodebuild -project DroidBox.xcodeproj -scheme DroidBox -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE_ID" CODE_SIGNING_ALLOWED=NO test
       - name: Build unsigned IPA
         run: chmod +x scripts/*.sh && ./scripts/build-unsigned-ipa.sh
       - uses: actions/upload-artifact@v4
