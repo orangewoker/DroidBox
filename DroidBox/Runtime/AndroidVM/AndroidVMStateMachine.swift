@@ -25,11 +25,27 @@ final class AndroidVMController {
     }
     func cancel(){launchTask?.cancel()}
     func reset(){state = .idle;detail="";error=nil}
-    private func transition(_ next:VMState,timeout:Duration,operation:@escaping @MainActor() async throws -> Void) async throws {
+    private func transition(
+        _ next: VMState,
+        timeout: Duration,
+        operation: @escaping @Sendable @MainActor () async throws -> Void
+    ) async throws {
         try Task.checkCancellation();state=next;detail=next.title
-        try await withThrowingTaskGroup(of:Void.self){group in
-            group.addTask{@MainActor in try await operation()};group.addTask{try await Task.sleep(for:timeout);throw DroidBoxError.vmBootTimeout}
-            _=try await group.next();group.cancelAll()
+        try await performWithTimeout(timeout, operation: operation)
+    }
+}
+
+private func performWithTimeout(
+    _ timeout: Duration,
+    operation: @escaping @Sendable @MainActor () async throws -> Void
+) async throws {
+    try await withThrowingTaskGroup(of: Void.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(for: timeout)
+            throw DroidBoxError.vmBootTimeout
         }
+        _ = try await group.next()
+        group.cancelAll()
     }
 }
