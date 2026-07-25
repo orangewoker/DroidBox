@@ -17,10 +17,10 @@ final class AndroidVMController {
     func launch(_ game:GameRecord){
         launchTask?.cancel();error=nil
         launchTask=Task{do{
-            try await transition(.preparingRuntime,timeout:3){guard self.runtimeManager.androidRuntimeValid else{throw DroidBoxError.runtimeMissing}}
-            try await transition(.checkingJIT,timeout:3){if self.runtimeManager.jitStatus == .unknown{self.runtimeManager.probeJIT()}}
-            try await transition(.creatingOverlay,timeout:20){try await self.runtimeManager.prepareOverlay(gameID:game.id)}
-            try await transition(.startingVM,timeout:15){throw DroidBoxError.unsupported("当前构建未包含 QEMU 可执行核心。请安装带 UTM/QEMU Core 的完整运行时版本。")}
+            try await transition(.preparingRuntime,timeout:.seconds(3)){guard self.runtimeManager.androidRuntimeValid else{throw DroidBoxError.runtimeMissing}}
+            try await transition(.checkingJIT,timeout:.seconds(3)){if self.runtimeManager.jitStatus == .unknown{self.runtimeManager.probeJIT()}}
+            try await transition(.creatingOverlay,timeout:.seconds(20)){try await self.runtimeManager.prepareOverlay(gameID:game.id)}
+            try await transition(.startingVM,timeout:.seconds(15)){throw DroidBoxError.unsupported("当前构建未包含 QEMU 可执行核心。请安装带 UTM/QEMU Core 的完整运行时版本。")}
         }catch is CancellationError{state = .idle;detail="已取消"}catch{self.error=error.localizedDescription;state = .failed;detail=error.localizedDescription}}
     }
     func cancel(){launchTask?.cancel()}
@@ -33,4 +33,3 @@ final class AndroidVMController {
         }
     }
 }
-
