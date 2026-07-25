@@ -18,6 +18,22 @@ final class APKKitTests:XCTestCase{
         XCTAssertEqual(decoded, original)
         XCTAssertThrowsError(try ADBPacket.decode(header: encoded.prefix(24), payload: Data("bad".utf8)))
     }
+    func testQCOW2OverlayHeader() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let base = root.appending(path: "base.qcow2"), overlay = root.appending(path: "overlay.qcow2")
+        var header = Data(repeating: 0, count: 104)
+        header.replaceSubrange(0..<4, with: UInt32(0x514649fb).bigEndianData)
+        header.replaceSubrange(4..<8, with: UInt32(3).bigEndianData)
+        header.replaceSubrange(20..<24, with: UInt32(16).bigEndianData)
+        header.replaceSubrange(24..<32, with: UInt64(2 * 1024 * 1024 * 1024).bigEndianData)
+        try header.write(to: base)
+        try QCOW2OverlayBuilder.create(backingFile: base, overlay: overlay)
+        let result = try Data(contentsOf: overlay)
+        XCTAssertEqual(result.prefix(4), Data([0x51, 0x46, 0x49, 0xfb]))
+        XCTAssertEqual(result.count, 4 * 65_536)
+        XCTAssertTrue(String(decoding: result[104..<104 + base.path.utf8.count], as: UTF8.self).hasSuffix("base.qcow2"))
+    }
     @MainActor func testAtomicLibrary()throws{let root=FileManager.default.temporaryDirectory.appending(path:UUID().uuidString);let paths=try AppPaths(root:root);let library=GameLibrary(paths:paths);let report=CompatibilityReport(level:.good,engineConfidence:1,summary:"ok",issues:[]);let game=GameRecord(id:UUID(),title:"Test",packageName:nil,versionName:nil,versionCode:nil,sourceType:.apk,engine:.android,runtimeMode:.androidVM,abiList:[.arm64],iconPath:nil,coverPath:nil,originalFilePath:"a",installedContentPath:"b",dataPath:"c",runtimeProfileID:"default",orientation:.automatic,compatibility:report,controllerProfile:nil,createdAt:Date(),lastPlayedAt:nil,totalPlayTime:0);try library.add(game);XCTAssertTrue(FileManager.default.fileExists(atPath:paths.libraryFile.path));XCTAssertEqual(GameLibrary(paths:paths).games.count,1)}
 
     private func makeResourceTableFixture() -> Data {
@@ -62,7 +78,8 @@ final class APKKitTests:XCTestCase{
 }
 
 private extension FixedWidthInteger {
-    var littleEndianData: Data { withUnsafeBytes(of: littleEndian) { Data($0) } }
+    var littleEndianData: Data { Swift.withUnsafeBytes(of: littleEndian) { Data($0) } }
+    var bigEndianData: Data { Swift.withUnsafeBytes(of: bigEndian) { Data($0) } }
 }
 
 private extension Data {

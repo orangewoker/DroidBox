@@ -22,7 +22,7 @@ struct RuntimeSettingsView: View {
                     }
                 }
                 Section("核心组件") {
-                    LabeledContent("UTM/QEMU", value: "未嵌入")
+                    LabeledContent("UTM/QEMU", value: DBQEMUBridge.coreBundled ? "已嵌入" : "未嵌入")
                     Text("Runtime 数据与 QEMU 核心分开管理。当前源码保留固定版本的构建入口，完整核心需由 macOS CI 构建。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

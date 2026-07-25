@@ -10,3 +10,4 @@ This software is provided 'as-is', without any express or implied warranty. In n
 
 UTM, QEMU, Android/LineageOS runtime images and Ren'Py runtime binaries are not currently included in the source tree or IPA. Their licenses must be bundled with any future binary distribution that includes them. See `DEPENDENCIES.md`.
 
+The optional QEMU Core build uses launcher design derived from UTM's `UTMQemuSystem`, Copyright osy, licensed under Apache-2.0. QEMU Core archives must include UTM's license and the licenses emitted by its dependency build.

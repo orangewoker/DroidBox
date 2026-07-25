@@ -7,7 +7,9 @@
 | 项目 | 固定版本 | 许可证 | 用途 |
 |---|---|---|---|
 | UTM | tag `v5.0.3`, commit `e4a4c34b671284263fc69f81b607de494d7e9b65` | Apache-2.0 / GPL-2.0-or-later（按组件） | QEMUKit、显示、输入和 QEMU iOS 构建基础 |
-| QEMU | UTM 上述 commit 的 submodule revision | GPL-2.0-or-later | ARM64 Android VM |
+| QEMU | `10.0.2-utm`（UTM v5.0.3 patches） | GPL-2.0-or-later | ARM64 Android VM |
+| QEMUKit | commit `589765abff27a8764d58b1a90999a204ac09881e` | Apache-2.0 | QMP/生命周期设计参考 |
+| CocoaSpice | commit `52b1535824657354fc3089eab24f1827280f9143` | Apache-2.0 | SPICE 显示、输入和音频接入目标 |
 | LineageOS/AOSP QEMU runtime | `21.0-qemu-2026.07` 占位清单 | Apache-2.0 及相应开源许可证 | Android guest 镜像 |
 | Ren'Py | 7.x 与 8.x，版本待可复现构建确认 | MIT 及第三方许可证 | Ren'Py 快速路径 |
 

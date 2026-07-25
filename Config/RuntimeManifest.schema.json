@@ -6,7 +6,7 @@
     "id": {"type": "string"}, "version": {"type": "string"},
     "architecture": {"const": "arm64"}, "downloadURL": {"type": "string"},
     "sha256": {"type": "string"}, "size": {"type": "integer", "minimum": 0},
-    "license": {"type": "string"}, "minimumAppVersion": {"type": "string"}
+    "license": {"type": "string"}, "minimumAppVersion": {"type": "string"},
+    "qemuArguments": {"type": "array", "items": {"type": "string"}}
   }
 }
-

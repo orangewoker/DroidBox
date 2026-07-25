@@ -1,0 +1,35 @@
+name: Build QEMU Core
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          brew install llvm spirv-llvm-translator libxcb libxrandr meson cmake gettext glib libgpg-error bison autoconf automake libtool pkg-config ninja
+          python3 -m pip install --break-system-packages six pyparsing setuptools pyyaml distlib mako
+      - name: Build pinned UTM QEMU iOS core
+        run: chmod +x scripts/*.sh && ./scripts/build-qemu-ios.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QEMUCore-utm-v5.0.3-ios-arm64
+          path: |
+            dist/QEMUCore-utm-v5.0.3-ios-arm64.zip
+            dist/QEMUCore-utm-v5.0.3-ios-arm64.sha256
+          retention-days: 30
+      - name: Publish core prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: qemu-core-v5.0.3
+          target_commitish: ${{ github.sha }}
+          name: DroidBox QEMU Core (UTM v5.0.3)
+          body: Pinned iOS arm64 QEMU/SPICE dependency frameworks built from UTM v5.0.3. Licenses are included in the archive.
+          prerelease: true
+          files: |
+            dist/QEMUCore-utm-v5.0.3-ios-arm64.zip
+            dist/QEMUCore-utm-v5.0.3-ios-arm64.sha256
+

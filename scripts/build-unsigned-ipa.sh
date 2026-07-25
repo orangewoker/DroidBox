@@ -13,6 +13,14 @@ xcodebuild -project "$ROOT/DroidBox.xcodeproj" -scheme DroidBox -configuration R
 
 APP="$DERIVED/Build/Products/Release-iphoneos/DroidBox.app"
 test -d "$APP"
+if [ -d "$ROOT/Vendor/QEMUCore/Frameworks" ]; then
+  mkdir -p "$APP/Frameworks"
+  ditto "$ROOT/Vendor/QEMUCore/Frameworks" "$APP/Frameworks"
+fi
+if [ -d "$ROOT/Vendor/QEMUCore/share" ]; then
+  mkdir -p "$APP/qemu"
+  ditto "$ROOT/Vendor/QEMUCore/share" "$APP/qemu"
+fi
 ditto "$APP" "$DIST/Payload/DroidBox.app"
 (cd "$DIST" && zip -qry "DroidBox-unsigned.ipa" Payload)
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")"
