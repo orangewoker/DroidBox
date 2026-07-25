@@ -6,6 +6,7 @@ struct SafeArchive: Sendable {
     let url: URL
     let entries: [ArchiveEntryInfo]
     init(url: URL, maxExpandedBytes: UInt64 = 16 * 1024 * 1024 * 1024, maxRatio: UInt64 = 20) throws {
+        self.url = url
         let native = try DBZipArchive.entries(at: url)
         var seen=Set<String>(), totalCompressed:UInt64=0,totalExpanded:UInt64=0, mapped:[ArchiveEntryInfo]=[]
         for item in native {
