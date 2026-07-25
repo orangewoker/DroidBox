@@ -26,7 +26,7 @@ private struct LibraryView:View {
     @State private var sortNewest=true
     private var games:[GameRecord]{
         let filtered=environment.library.games.filter{search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || ($0.packageName?.localizedCaseInsensitiveContains(search) ?? false)}
-        return filtered.sorted{sortNewest ? $0.createdAt>$1.createdAt:$0.title.localizedCompare($1.title)==.orderedAscending}
+        return filtered.sorted { sortNewest ? $0.createdAt > $1.createdAt : $0.title.localizedCompare($1.title) == .orderedAscending }
     }
     var body:some View{
         NavigationStack{
