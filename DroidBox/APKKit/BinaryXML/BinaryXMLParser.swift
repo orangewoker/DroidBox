@@ -1,5 +1,4 @@
 import Foundation
-import FoundationXML
 
 struct ManifestInfo: Sendable {
     var packageName: String?
