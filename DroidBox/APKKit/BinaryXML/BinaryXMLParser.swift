@@ -6,6 +6,8 @@ struct ManifestInfo: Sendable {
     var versionCode: Int64?
     var label: String?
     var iconResource: String?
+    var labelResourceID: UInt32?
+    var iconResourceID: UInt32?
     var launcherActivity: String?
     var orientation: GameOrientation = .automatic
     var minSDK: Int?
@@ -60,7 +62,9 @@ enum BinaryXMLParser {
         case "uses-sdk": info.minSDK = attrs["minSdkVersion"].flatMap(Int.init); info.targetSDK = attrs["targetSdkVersion"].flatMap(Int.init)
         case "uses-permission": if let value = attrs["name"] { info.permissions.append(value) }
         case "uses-feature": if let value = attrs["name"] { info.features.append(value) }
-        case "application": info.label = attrs["label"]; info.iconResource = attrs["icon"]
+        case "application":
+            info.label = attrs["label"]; info.iconResource = attrs["icon"]
+            info.labelResourceID = resourceID(attrs["label"]); info.iconResourceID = resourceID(attrs["icon"])
         case "activity", "activity-alias":
             if info.launcherActivity == nil, let activity = attrs["name"] { info.launcherActivity = activity }
             if let value = attrs["screenOrientation"] { info.orientation = value.contains("landscape") ? .landscape : value.contains("portrait") ? .portrait : .automatic }
@@ -83,6 +87,10 @@ enum BinaryXMLParser {
         guard parser.parse() else { throw DroidBoxError.invalidArchive }; return delegate.info
     }
     private static func string(_ strings: [String], _ index: Int) -> String { index >= 0 && index < strings.count ? strings[index] : "" }
+    private static func resourceID(_ value: String?) -> UInt32? {
+        guard let value, value.hasPrefix("@0x") else { return nil }
+        return UInt32(value.dropFirst(3), radix: 16)
+    }
 }
 
 private struct DataReader {

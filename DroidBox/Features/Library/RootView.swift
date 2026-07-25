@@ -48,7 +48,7 @@ private struct LibraryView:View {
 
 struct GameArtwork:View{
     let game:GameRecord
-    var body:some View{ZStack{Rectangle().fill(Color(uiColor:.secondarySystemBackground));Image(systemName:icon).font(.system(size:44,weight:.light)).foregroundStyle(.tint)}.aspectRatio(4/3,contentMode:.fit).clipShape(.rect(cornerRadius:6))}
+    var body:some View{ZStack{Rectangle().fill(Color(uiColor:.secondarySystemBackground));if let path=game.iconPath,let image=UIImage(contentsOfFile:path){Image(uiImage:image).resizable().scaledToFit().padding(16)}else{Image(systemName:icon).font(.system(size:44,weight:.light)).foregroundStyle(.tint)}}.aspectRatio(4/3,contentMode:.fit).clipShape(.rect(cornerRadius:6))}
     private var icon:String{switch game.engine{case .rpgMakerMV,.rpgMakerMZ:"globe";case .renpy7,.renpy8:"text.book.closed";default:"gamecontroller"}}
 }
 private struct GameTile:View{
