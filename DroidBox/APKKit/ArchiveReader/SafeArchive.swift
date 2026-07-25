@@ -6,7 +6,7 @@ struct SafeArchive: Sendable {
     let url: URL
     let entries: [ArchiveEntryInfo]
     init(url: URL, maxExpandedBytes: UInt64 = 16 * 1024 * 1024 * 1024, maxRatio: UInt64 = 20) throws {
-        guard let native = try DBZipArchive.entries(at: url) else { throw DroidBoxError.invalidArchive }
+        let native = try DBZipArchive.entries(at: url)
         var seen=Set<String>(), totalCompressed:UInt64=0,totalExpanded:UInt64=0, mapped:[ArchiveEntryInfo]=[]
         for item in native {
             let path=item.path.replacingOccurrences(of:"\\",with:"/")
@@ -20,10 +20,7 @@ struct SafeArchive: Sendable {
         entries=mapped
     }
     func data(path: String, maximum: Int) throws -> Data {
-        guard let data = try DBZipArchive.data(forEntry: path, at: url, maximumSize: UInt(maximum)) else {
-            throw DroidBoxError.invalidArchive
-        }
-        return data
+        try DBZipArchive.data(forEntry: path, at: url, maximumSize: UInt(maximum))
     }
     func extract(prefix: String, to root: URL, maximumPerFile: Int = 512*1024*1024) throws {
         for item in entries where !item.directory && item.path.hasPrefix(prefix) {
