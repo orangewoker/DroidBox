@@ -14,6 +14,7 @@ actor ByteStream {
 
     func connect(host: String, port: UInt16, timeout: Duration) async throws {
         close()
+        try Task.checkCancellation()
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else { throw RFBError.invalidPort }
         let options = NWProtocolTCP.Options()
         options.noDelay = true
@@ -24,21 +25,27 @@ actor ByteStream {
         )
         self.connection = connection
         do {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                let resumed = Resumed()
-                connection.stateUpdateHandler = { state in
-                    switch state {
-                    case .ready:
-                        if resumed.claim() { continuation.resume() }
-                    case .failed(let error):
-                        if resumed.claim() { continuation.resume(throwing: RFBError.disconnected(error.localizedDescription)) }
-                    case .cancelled:
-                        if resumed.claim() { continuation.resume(throwing: RFBError.disconnected("连接已取消")) }
-                    default:
-                        break
+            // `withTaskCancellationHandler` is what lets a cancelled launch interrupt a
+            // connect that would otherwise sit until the TCP timeout expires.
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    let resumed = Resumed()
+                    connection.stateUpdateHandler = { state in
+                        switch state {
+                        case .ready:
+                            if resumed.claim() { continuation.resume() }
+                        case .failed(let error):
+                            if resumed.claim() { continuation.resume(throwing: RFBError.disconnected(error.localizedDescription)) }
+                        case .cancelled:
+                            if resumed.claim() { continuation.resume(throwing: CancellationError()) }
+                        default:
+                            break
+                        }
                     }
+                    connection.start(queue: queue)
                 }
-                connection.start(queue: queue)
+            } onCancel: {
+                connection.cancel()
             }
         } catch {
             close()
@@ -79,12 +86,18 @@ actor ByteStream {
 
     private func receive(maximum: Int) async throws -> Data {
         guard let connection else { throw RFBError.disconnected("尚未连接") }
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-            connection.receive(minimumIncompleteLength: 1, maximumLength: maximum) { data, _, complete, error in
-                if let error { continuation.resume(throwing: RFBError.disconnected(error.localizedDescription)) }
-                else if let data, !data.isEmpty { continuation.resume(returning: data) }
-                else { continuation.resume(throwing: RFBError.disconnected(complete ? "远端关闭了连接" : "未收到数据")) }
+        // The update loop spends nearly all its time parked here waiting for the guest to
+        // draw, so cancellation has to tear the socket down rather than wait for data.
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+                connection.receive(minimumIncompleteLength: 1, maximumLength: maximum) { data, _, complete, error in
+                    if let error { continuation.resume(throwing: RFBError.disconnected(error.localizedDescription)) }
+                    else if let data, !data.isEmpty { continuation.resume(returning: data) }
+                    else { continuation.resume(throwing: RFBError.disconnected(complete ? "远端关闭了连接" : "未收到数据")) }
+                }
             }
+        } onCancel: {
+            connection.cancel()
         }
     }
 }
