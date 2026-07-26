@@ -111,13 +111,6 @@ struct RFBPixelFormat: Equatable, Sendable {
     }
 }
 
-struct RFBServerInit: Sendable {
-    let width: Int
-    let height: Int
-    let format: RFBPixelFormat
-    let name: String
-}
-
 struct RFBRectangle: Sendable, Equatable {
     let x: Int
     let y: Int
@@ -144,6 +137,9 @@ enum RFBHandshake {
     static let clientVersion = Data("RFB 003.008\n".utf8)
     static let serverInitHeaderLength = 24
 
+    /// DroidBox always replies `RFB 003.008`, and only 3.7+ negotiates security as a list
+    /// of offered types. RFB 3.3 sends a bare 4-byte type instead, so accepting it here
+    /// would desync the rest of the handshake. QEMU speaks 3.8.
     static func parseVersion(_ data: Data) throws -> (major: Int, minor: Int) {
         guard data.count == 12, let text = String(data: data, encoding: .utf8), text.hasPrefix("RFB ") else {
             throw RFBError.handshakeFailed("服务器版本标识无效")
@@ -152,7 +148,7 @@ enum RFBHandshake {
         guard parts.count == 2, let major = Int(parts[0]), let minor = Int(parts[1]) else {
             throw RFBError.handshakeFailed("无法解析版本 \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
-        guard major == 3, minor >= 3 else { throw RFBError.handshakeFailed("不支持 RFB \(major).\(minor)") }
+        guard major == 3, minor >= 7 else { throw RFBError.handshakeFailed("不支持 RFB \(major).\(minor)，需要 3.7 或更高") }
         return (major, minor)
     }
 

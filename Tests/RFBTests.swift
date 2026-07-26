@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 @testable import DroidBox
 
@@ -8,14 +9,16 @@ final class RFBTests: XCTestCase {
         let parsed = try RFBHandshake.parseVersion(Data("RFB 003.008\n".utf8))
         XCTAssertEqual(parsed.major, 3)
         XCTAssertEqual(parsed.minor, 8)
-        XCTAssertEqual(try RFBHandshake.parseVersion(Data("RFB 003.003\n".utf8)).minor, 3)
+        XCTAssertEqual(try RFBHandshake.parseVersion(Data("RFB 003.007\n".utf8)).minor, 7)
     }
 
     func testParseVersionRejectsMalformedAndOldServers() {
         XCTAssertThrowsError(try RFBHandshake.parseVersion(Data("RFB 003.008".utf8)))
         XCTAssertThrowsError(try RFBHandshake.parseVersion(Data("HTTP/1.1 20".utf8)))
-        XCTAssertThrowsError(try RFBHandshake.parseVersion(Data("RFB 003.002\n".utf8)))
         XCTAssertThrowsError(try RFBHandshake.parseVersion(Data("RFB 004.000\n".utf8)))
+        // 3.3 negotiates security with a bare type rather than a list, so it must be refused
+        // instead of silently desyncing the handshake.
+        XCTAssertThrowsError(try RFBHandshake.parseVersion(Data("RFB 003.003\n".utf8)))
     }
 
     func testSelectSecurityPrefersNoneAndReportsPasswordServers() throws {
@@ -148,5 +151,41 @@ final class RFBTests: XCTestCase {
         let controller = VMDisplayController()
         XCTAssertNil(controller.guestPoint(for: CGPoint(x: 10, y: 10), in: CGSize(width: 100, height: 100)),
                      "with no frame there is no screen geometry to map into")
+    }
+
+    func testGuestPointMapsCornersAndCentreWhenLetterboxed() throws {
+        // A 1080x1920 portrait guest inside a 1000x1000 view fits to 562.5x1000 with
+        // 218.75pt bars on the left and right.
+        let screen = CGSize(width: 1080, height: 1920)
+        let view = CGSize(width: 1000, height: 1000)
+        let topLeft = try XCTUnwrap(RFBTouchMapper.guestPoint(for: CGPoint(x: 218.75, y: 0), in: view, screen: screen))
+        XCTAssertEqual(topLeft.x, 0)
+        XCTAssertEqual(topLeft.y, 0)
+
+        let centre = try XCTUnwrap(RFBTouchMapper.guestPoint(for: CGPoint(x: 500, y: 500), in: view, screen: screen))
+        XCTAssertEqual(centre.x, 540)
+        XCTAssertEqual(centre.y, 960)
+
+        let nearBottomRight = try XCTUnwrap(RFBTouchMapper.guestPoint(for: CGPoint(x: 781, y: 999), in: view, screen: screen))
+        XCTAssertLessThan(nearBottomRight.x, 1080)
+        XCTAssertLessThan(nearBottomRight.y, 1920)
+    }
+
+    func testGuestPointRejectsLetterboxMargins() {
+        let screen = CGSize(width: 1080, height: 1920)
+        let view = CGSize(width: 1000, height: 1000)
+        XCTAssertNil(RFBTouchMapper.guestPoint(for: CGPoint(x: 10, y: 500), in: view, screen: screen),
+                     "the left bar is outside the guest screen")
+        XCTAssertNil(RFBTouchMapper.guestPoint(for: CGPoint(x: 990, y: 500), in: view, screen: screen))
+        XCTAssertNil(RFBTouchMapper.guestPoint(for: CGPoint(x: 500, y: 500), in: view, screen: .zero))
+    }
+
+    func testGuestPointIsExactWhenAspectMatches() throws {
+        // Same aspect ratio means no letterbox and a clean 2:1 downscale.
+        let mapped = try XCTUnwrap(RFBTouchMapper.guestPoint(
+            for: CGPoint(x: 100, y: 200), in: CGSize(width: 400, height: 800), screen: CGSize(width: 800, height: 1600)
+        ))
+        XCTAssertEqual(mapped.x, 200)
+        XCTAssertEqual(mapped.y, 400)
     }
 }

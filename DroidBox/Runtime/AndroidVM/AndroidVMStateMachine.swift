@@ -78,9 +78,11 @@ final class AndroidVMController {
 
     /// QEMU opens the VNC listener during startup, but the guest may not have drawn yet.
     /// Retry the connect, then wait for the first frame so `.running` means a visible screen.
+    /// The budget stays under the caller's 30s transition timeout so a genuine failure is
+    /// reported with its own reason rather than as a generic boot timeout.
     private func attachDisplay() async throws {
         var lastError: Error = RFBError.disconnected("显示通道尚未就绪")
-        for _ in 0..<10 {
+        for attempt in 0..<4 {
             try Task.checkCancellation()
             display.start(port: vncPort)
             for _ in 0..<20 {
@@ -89,7 +91,7 @@ final class AndroidVMController {
                 if let message = display.errorMessage { lastError = RFBError.disconnected(message); break }
             }
             display.stop()
-            try await Task.sleep(for: .seconds(1))
+            if attempt < 3 { try await Task.sleep(for: .seconds(1)) }
         }
         throw lastError
     }

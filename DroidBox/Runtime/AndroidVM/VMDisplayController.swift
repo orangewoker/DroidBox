@@ -89,7 +89,14 @@ final class VMDisplayController {
     /// Inverts the aspect-preserving fit used by the display surface. Points in the
     /// letterbox margins have no guest pixel and are dropped.
     func guestPoint(for point: CGPoint, in viewSize: CGSize) -> (x: Int, y: Int)? {
-        let screen = screenSize
+        RFBTouchMapper.guestPoint(for: point, in: viewSize, screen: screenSize)
+    }
+}
+
+/// The inverse of `scaledToFit`, kept separate from the controller so the geometry can be
+/// verified without a live framebuffer.
+enum RFBTouchMapper {
+    static func guestPoint(for point: CGPoint, in viewSize: CGSize, screen: CGSize) -> (x: Int, y: Int)? {
         guard screen.width > 0, screen.height > 0, viewSize.width > 0, viewSize.height > 0 else { return nil }
         let scale = min(viewSize.width / screen.width, viewSize.height / screen.height)
         guard scale > 0 else { return nil }
