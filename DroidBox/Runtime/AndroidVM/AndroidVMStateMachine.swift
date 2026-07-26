@@ -12,6 +12,7 @@ final class AndroidVMController {
     private(set) var detail=""
     private(set) var error:String?
     private var launchTask:Task<Void,Never>?
+    private var displayWatchdog:Task<Void,Never>?
     private let qmp = QMPClient()
     private let adb = ADBClient()
     private let bridge = DBQEMUBridge()
@@ -45,16 +46,31 @@ final class AndroidVMController {
                 try await transition(.resolvingActivity,timeout:.seconds(20)){activity=try await self.adb.resolveLauncherActivity(packageName:package)}
                 try await transition(.launchingActivity,timeout:.seconds(20)){try await self.adb.launch(packageName:package,activity:activity)}
                 self.state = .running;self.detail="游戏运行中"
+                self.startDisplayWatchdog()
             } else { throw DroidBoxError.activityNotFound }
-        }catch is CancellationError{state = .idle;detail="已取消"}catch{self.error=error.localizedDescription;state = .failed;detail=error.localizedDescription;display.stop()}}
+        }catch is CancellationError{state = .idle;detail="已取消";await teardown()}catch{self.error=error.localizedDescription;state = .failed;detail=error.localizedDescription;await teardown()}}
     }
-    func cancel(){launchTask?.cancel();display.stop();Task{try? await qmp.quit();await adb.disconnect()}}
+
+    /// Any exit from the launch sequence past `startingVM` leaves a live QEMU process and
+    /// open sockets behind, so every failure path has to release them.
+    private func teardown() async {
+        displayWatchdog?.cancel()
+        displayWatchdog = nil
+        display.stop()
+        try? await qmp.quit()
+        await adb.disconnect()
+    }
+    func cancel(){launchTask?.cancel();Task{await teardown()}}
     func suspend() { Task { try? await qmp.pause(); state = .suspending; detail = "虚拟机已暂停" } }
     func resume() { Task { try? await qmp.resume(); state = .running; detail = "游戏运行中" } }
     func stop() {
         launchTask?.cancel()
+        // Drop the display synchronously so the view stops rendering the guest the moment
+        // the player is dismissed, rather than one Task hop later.
+        displayWatchdog?.cancel()
+        displayWatchdog = nil
         display.stop()
-        Task { state = .stopping; try? await qmp.quit(); await adb.disconnect(); state = .idle; detail = "" }
+        Task { state = .stopping; await teardown(); state = .idle; detail = "" }
     }
     func reset(){state = .idle;detail="";error=nil}
     private func transition(
@@ -95,6 +111,27 @@ final class AndroidVMController {
         }
         throw lastError
     }
+    /// The display loop can die after boot — QEMU crashing, the guest rebooting, the
+    /// socket dropping. Without this the UI would silently fall back to the boot screen
+    /// while QEMU kept running, so surface it as a failure and release the VM.
+    private func startDisplayWatchdog() {
+        displayWatchdog?.cancel()
+        displayWatchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                // A paused VM keeps its display attached, so keep watching across suspend.
+                guard self.state == .running || self.state == .suspending else { return }
+                guard !self.display.isConnected else { continue }
+                self.error = self.display.errorMessage ?? "Android 显示通道已断开"
+                self.state = .failed
+                self.detail = self.error ?? ""
+                await self.teardown()
+                return
+            }
+        }
+    }
+
     private func connectServices() async throws {
         var lastError: Error = DroidBoxError.adbUnavailable
         for _ in 0..<60 {

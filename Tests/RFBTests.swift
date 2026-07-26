@@ -153,6 +153,28 @@ final class RFBTests: XCTestCase {
                      "with no frame there is no screen geometry to map into")
     }
 
+    @MainActor func testStopClearsPublishedState() {
+        let controller = VMDisplayController()
+        controller.stop()
+        XCTAssertNil(controller.frame)
+        XCTAssertFalse(controller.isConnected)
+        XCTAssertEqual(controller.desktopName, "")
+        XCTAssertEqual(controller.screenSize, .zero)
+    }
+
+    @MainActor func testConnectingToADeadPortReportsFailure() async throws {
+        // Port 1 on loopback has nothing listening, so the loop must surface an error
+        // rather than sitting in a connected state forever.
+        let controller = VMDisplayController()
+        controller.start(port: 1)
+        for _ in 0..<40 where controller.errorMessage == nil {
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        XCTAssertNotNil(controller.errorMessage, "a refused connection must be reported")
+        XCTAssertFalse(controller.isConnected)
+        controller.stop()
+    }
+
     func testGuestPointMapsCornersAndCentreWhenLetterboxed() throws {
         // A 1080x1920 portrait guest inside a 1000x1000 view fits to 562.5x1000 with
         // 218.75pt bars on the left and right.

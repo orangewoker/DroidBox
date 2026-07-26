@@ -55,6 +55,7 @@ final class VMDisplayController {
         loop = nil
         isConnected = false
         frame = nil
+        desktopName = ""
         let client = self.client
         Task { await client.disconnect() }
     }
