@@ -23,6 +23,7 @@ struct RuntimeSettingsView: View {
                 }
                 Section("核心组件") {
                     LabeledContent("UTM/QEMU", value: DBQEMUBridge.coreBundled ? "已嵌入" : "未嵌入")
+                    LabeledContent("显示通道", value: "VNC/RFB 3.8 (Raw, CopyRect)")
                     Text("Runtime 数据与 QEMU 核心分开管理。当前源码保留固定版本的构建入口，完整核心需由 macOS CI 构建。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -60,22 +61,39 @@ struct DiagnosticsView: View {
 }
 
 struct SettingsView: View {
+    @Environment(AppEnvironment.self) private var environment
+
     var body: some View {
+        @Bindable var settings = environment.settings
         NavigationStack {
             Form {
                 Section("导入限制") {
-                    LabeledContent("单文件上限", value: "8 GB")
+                    Picker("单文件上限", selection: $settings.maximumFileSizeGB) {
+                        ForEach(AppSettings.fileSizeOptions, id: \.self) { size in
+                            Text("\(size) GB").tag(size)
+                        }
+                    }
                     LabeledContent("最大膨胀倍数", value: "20 倍")
                 }
                 Section("运行策略") {
-                    Toggle("自动选择运行时", isOn: .constant(true))
-                    Picker("VM 内存", selection: .constant(1536)) {
-                        Text("1024 MB").tag(1024); Text("1536 MB").tag(1536); Text("2048 MB").tag(2048)
+                    Toggle("自动选择运行时", isOn: $settings.automaticRuntimeSelection)
+                    Picker("VM 内存", selection: $settings.vmMemoryMB) {
+                        ForEach(AppSettings.memoryOptions, id: \.self) { Text("\($0) MB").tag($0) }
                     }
+                    if settings.vmMemoryMB >= 3072 {
+                        Text("超过 2048 MB 需要设备提供扩展内存权限，否则 iOS 可能直接终止应用。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Section("播放") {
+                    Toggle("运行时保持屏幕常亮", isOn: $settings.keepScreenAwake)
+                    Toggle("显示返回/主屏幕按键", isOn: $settings.showSystemKeys)
                 }
                 Section("关于") {
                     LabeledContent("应用", value: "DroidBox")
+                    LabeledContent("版本", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")
                     LabeledContent("兼容范围", value: "iOS 18-27")
+                    Button("恢复默认设置") { settings.resetToDefaults() }
                 }
             }
             .navigationTitle("设置")

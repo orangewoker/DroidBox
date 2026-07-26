@@ -8,13 +8,15 @@ final class AppEnvironment {
     let importer: ImportCoordinator
     let runtimeManager: RuntimeManager
     let diagnostics: DiagnosticsService
+    let settings: AppSettings
     var selectedGame: GameRecord?
     var presentedPlayer: GameRecord?
 
     init() {
         do {
             let paths=try AppPaths();self.paths=paths;let library=GameLibrary(paths:paths);self.library=library
-            importer=ImportCoordinator(library:library);runtimeManager=RuntimeManager(paths:paths);diagnostics=DiagnosticsService(runtimeManager:runtimeManager)
+            let settings=AppSettings();self.settings=settings
+            importer=ImportCoordinator(library:library,settings:settings);runtimeManager=RuntimeManager(paths:paths);diagnostics=DiagnosticsService(runtimeManager:runtimeManager)
             Task { await AppLogger.shared.configure(paths:paths);await AppLogger.shared.log(.default, "DroidBox started") }
         } catch { fatalError("Cannot initialize DroidBox storage: \(error)") }
     }

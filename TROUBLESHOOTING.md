@@ -12,6 +12,14 @@
 
 这是当前基础构建的已知限制，不是 JIT 故障。JIT 只提供可执行内存权限，不会自动加入 QEMU、Android 镜像、显示或 ADB。
 
+## 停在“连接显示通道”
+
+应用会连接 QEMU 的 VNC 端口（`5900 + 显示号`）。若一直失败，检查 Runtime 清单的 `qemuArguments` 是否保留了 `-vnc 127.0.0.1:{vncDisplay}`；自定义参数改成 Unix socket 或去掉 `-vnc` 后画面无法接通。要求密码认证的服务器同样会被拒绝，DroidBox 只接受本机无认证连接。
+
+## 画面正常但触控无反应
+
+指针事件依赖 guest 中的 `virtio-tablet-pci` 绝对定位设备。自定义 `qemuArguments` 时保留该设备，否则 Android 收不到坐标。
+
 ## RPG Maker 黑屏
 
 查看游戏是否确实包含 `assets/www/index.html`，并检查大小写敏感的资源路径及游戏自身 JavaScript 错误。

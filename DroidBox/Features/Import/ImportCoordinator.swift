@@ -12,8 +12,9 @@ final class ImportCoordinator {
     private(set) var errorMessage: String?
     private var task: Task<Void,Never>?
     let library: GameLibrary
-    var maximumFileSize: UInt64 = 8*1024*1024*1024
-    init(library: GameLibrary){self.library=library}
+    let settings: AppSettings
+    var maximumFileSize: UInt64 { settings.maximumFileSizeBytes }
+    init(library: GameLibrary, settings: AppSettings){self.library=library;self.settings=settings}
     func cancel(){task?.cancel()}
     func start(url: URL){
         guard !isImporting else{return};isImporting=true;errorMessage=nil
