@@ -123,6 +123,15 @@ final class RFBTests: XCTestCase {
         XCTAssertThrowsError(try framebuffer.applyCopyRect(destination, sourceX: 3, sourceY: 0))
     }
 
+    func testEmptyRectangleIsANoOp() throws {
+        // A zero-area rectangle is legal RFB and must not trip the pointer arithmetic.
+        var framebuffer = RFBFramebuffer(width: 4, height: 4)
+        let empty = RFBRectangle(x: 2, y: 2, width: 0, height: 0, encoding: 0)
+        try framebuffer.applyRaw(empty, payload: Data())
+        try framebuffer.applyCopyRect(empty, sourceX: 0, sourceY: 0)
+        XCTAssertNotNil(framebuffer.makeFrame())
+    }
+
     func testResizeReallocatesAndBumpsGeneration() {
         var framebuffer = RFBFramebuffer(width: 8, height: 8)
         framebuffer.resize(width: 16, height: 4)

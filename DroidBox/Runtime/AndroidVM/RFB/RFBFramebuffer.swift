@@ -51,6 +51,9 @@ struct RFBFramebuffer {
     mutating func applyRaw(_ rectangle: RFBRectangle, payload: Data) throws {
         try validate(rectangle)
         guard payload.count == Self.rawPayloadLength(for: rectangle) else { throw RFBError.truncatedMessage }
+        // An empty rectangle is legal and leaves `baseAddress` nil, so bail before the
+        // pointer arithmetic rather than relying on the loop bounds to skip it.
+        guard rectangle.width > 0, rectangle.height > 0 else { return }
         let stride = width * Self.bytesPerPixel, rowBytes = rectangle.width * Self.bytesPerPixel
         payload.withUnsafeBytes { source in
             pixels.withUnsafeMutableBytes { destination in
@@ -68,6 +71,7 @@ struct RFBFramebuffer {
     mutating func applyCopyRect(_ rectangle: RFBRectangle, sourceX: Int, sourceY: Int) throws {
         try validate(rectangle)
         try validate(RFBRectangle(x: sourceX, y: sourceY, width: rectangle.width, height: rectangle.height, encoding: rectangle.encoding))
+        guard rectangle.width > 0, rectangle.height > 0 else { return }
         let stride = width * Self.bytesPerPixel, rowBytes = rectangle.width * Self.bytesPerPixel
         // Copy through a staging buffer so overlapping source and destination stay correct.
         var staging = Data(count: rectangle.height * rowBytes)
