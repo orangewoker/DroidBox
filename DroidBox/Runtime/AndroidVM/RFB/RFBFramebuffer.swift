@@ -29,16 +29,21 @@ struct RFBFramebuffer {
 
     var byteCount: Int { width * height * Self.bytesPerPixel }
 
+    /// Guest-driven resize. Bounded like the initial ServerInit geometry so a bad
+    /// DesktopSize rectangle cannot make the app allocate an arbitrary buffer.
+    static let maximumDimension = 16_384
+
     mutating func resize(width newWidth: Int, height newHeight: Int) {
-        guard newWidth > 0, newHeight > 0, newWidth != width || newHeight != height else { return }
+        guard newWidth > 0, newHeight > 0,
+              newWidth <= Self.maximumDimension, newHeight <= Self.maximumDimension,
+              newWidth != width || newHeight != height else { return }
         width = newWidth
         height = newHeight
         pixels = Data(repeating: 0, count: byteCount)
         generation += 1
     }
 
-    /// Byte count the server will send for a rectangle, or nil when the rectangle is
-    /// self-describing and must be read incrementally by the caller.
+    /// Byte count the server sends for a Raw-encoded rectangle.
     static func rawPayloadLength(for rectangle: RFBRectangle) -> Int {
         rectangle.width * rectangle.height * bytesPerPixel
     }

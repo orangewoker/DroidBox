@@ -134,6 +134,15 @@ final class RFBTests: XCTestCase {
         XCTAssertEqual(framebuffer.generation, 1, "an identical resize is a no-op")
     }
 
+    func testResizeRejectsUnboundedGeometry() {
+        var framebuffer = RFBFramebuffer(width: 8, height: 8)
+        framebuffer.resize(width: 1_000_000, height: 1_000_000)
+        XCTAssertEqual(framebuffer.width, 8, "an oversized DesktopSize must not allocate")
+        framebuffer.resize(width: 0, height: 100)
+        XCTAssertEqual(framebuffer.width, 8)
+        XCTAssertEqual(framebuffer.generation, 0)
+    }
+
     func testFrameMatchesFramebufferGeometry() throws {
         var framebuffer = RFBFramebuffer(width: 3, height: 5)
         let rectangle = RFBRectangle(x: 0, y: 0, width: 3, height: 5, encoding: 0)
