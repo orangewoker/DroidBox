@@ -68,3 +68,5 @@ Full Runtime IPA 现在从固定 SHA-256 的 UTM 5.0.3 官方发行包提取并�
 Android-x86 9.0-r2 Runtime，QEMU 启动后通过本机 QMP、ADB 和 VNC/RFB 完成 APK
 安装、入口解析、启动、显示与触控。Android VM 需要 JIT 才能达到可用速度，且 APK
 必须包含 x86_64 原生库或为纯 Java 应用。
+
+1.3.1 修复 Android Runtime 校验文件携带 CI 绝对路径的问题，离线下载脚本现在可以直接校验发行资产。

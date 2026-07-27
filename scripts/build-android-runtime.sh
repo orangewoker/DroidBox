@@ -67,7 +67,7 @@ cat > "$WORK/package/runtime.json" <<EOF
 EOF
 
 (cd "$WORK/package" && zip -9 -qry "$DIST/$ASSET" .)
-sha256sum "$DIST/$ASSET" > "$DIST/$ASSET.sha256"
+(cd "$DIST" && sha256sum "$ASSET" > "$ASSET.sha256")
 python3 - "$DIST/$ASSET" <<'PY'
 import json, sys, zipfile
 with zipfile.ZipFile(sys.argv[1]) as archive:
