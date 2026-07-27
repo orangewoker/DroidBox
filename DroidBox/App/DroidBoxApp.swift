@@ -64,15 +64,23 @@ final class DroidBoxFrontendHost {
 
 /// Called by `DBRenPyMain.m` on SDL's application thread. SDL keeps UIKit's event loop
 /// alive while this thread waits for the user to choose a Ren'Py game.
+@MainActor
 @_cdecl("DroidBoxFrontendMain")
 func DroidBoxFrontendMain(
     _ argc: Int32,
     _ argv: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
 ) -> Int32 {
     let signal = DispatchSemaphore(value: 0)
-    Task { @MainActor in
-        DroidBoxFrontendHost.shared.start(signal: signal)
+    DroidBoxFrontendHost.shared.start(signal: signal)
+
+    // SDL 2 invokes its iOS main function from `postFinishLaunch` on the UIKit
+    // main thread. Blocking that thread on the semaphore leaves the app black.
+    // Run the main RunLoop until the SwiftUI player signals the Ren'Py handoff.
+    while signal.wait(timeout: .now()) == .timedOut {
+        RunLoop.current.run(
+            mode: .default,
+            before: Date(timeIntervalSinceNow: 0.01)
+        )
     }
-    signal.wait()
     return 0
 }
