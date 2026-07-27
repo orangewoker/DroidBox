@@ -41,12 +41,12 @@ struct SafeArchive: Sendable {
             throw DroidBoxError.invalidArchive
         }
         return try DBZipArchive.data(
-            forEntryAtOffset: item.localHeaderOffset,
+            localHeaderOffset: item.localHeaderOffset,
             compressedSize: item.compressed,
             uncompressedSize: item.uncompressed,
             method: item.compressionMethod,
             crc32: item.crc32,
-            at: url,
+            url: url,
             maximumSize: UInt(maximum)
         )
     }
@@ -67,14 +67,14 @@ struct SafeArchive: Sendable {
             guard !relative.isEmpty else{continue}
             let destination=root.appending(path:relative).standardizedFileURL
             guard destination.path.hasPrefix(root.standardizedFileURL.path+"/") else{throw DroidBoxError.unsafeArchiveEntry(item.path)}
-            try DBZipArchive.extractEntry(
-                atOffset: item.localHeaderOffset,
+            try DBZipArchive.extract(
+                localHeaderOffset: item.localHeaderOffset,
                 compressedSize: item.compressed,
                 uncompressedSize: item.uncompressed,
                 method: item.compressionMethod,
                 crc32: item.crc32,
                 fileHandle: handle,
-                to: destination,
+                destination: destination,
                 maximumSize: UInt(maximumPerFile)
             )
         }

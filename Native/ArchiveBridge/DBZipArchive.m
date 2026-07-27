@@ -121,7 +121,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
     if (!entries) return nil;
     for (DBZipEntry *candidate in entries) {
         if ([candidate.path isEqualToString:entry]) {
-            return [self dataForEntryAtOffset:candidate.localHeaderOffset
+            return [self dataAtLocalHeaderOffset:candidate.localHeaderOffset
                                compressedSize:candidate.compressedSize
                              uncompressedSize:candidate.uncompressedSize
                                         method:candidate.compressionMethod
@@ -135,7 +135,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
     return nil;
 }
 
-+ (NSData *)dataForEntryAtOffset:(uint64_t)localHeaderOffset
++ (NSData *)dataAtLocalHeaderOffset:(uint64_t)localHeaderOffset
                    compressedSize:(uint64_t)compressedSize
                  uncompressedSize:(uint64_t)uncompressedSize
                             method:(uint16_t)method
@@ -145,7 +145,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
                              error:(NSError **)error {
     NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:url error:error];
     if (!handle) return nil;
-    NSData *result = [self dataForEntryAtOffset:localHeaderOffset
+    NSData *result = [self dataAtLocalHeaderOffset:localHeaderOffset
                                 compressedSize:compressedSize
                               uncompressedSize:uncompressedSize
                                          method:method
@@ -157,7 +157,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
     return result;
 }
 
-+ (NSData *)dataForEntryAtOffset:(uint64_t)localHeaderOffset
++ (NSData *)dataAtLocalHeaderOffset:(uint64_t)localHeaderOffset
                    compressedSize:(uint64_t)compressedSize
                  uncompressedSize:(uint64_t)uncompressedSize
                             method:(uint16_t)method
@@ -246,7 +246,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
     return [data writeToURL:destination options:NSDataWritingAtomic error:error];
 }
 
-+ (BOOL)extractEntryAtOffset:(uint64_t)localHeaderOffset
++ (BOOL)extractAtLocalHeaderOffset:(uint64_t)localHeaderOffset
               compressedSize:(uint64_t)compressedSize
             uncompressedSize:(uint64_t)uncompressedSize
                        method:(uint16_t)method
@@ -257,7 +257,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
                         error:(NSError **)error {
     NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:url error:error];
     if (!handle) return NO;
-    BOOL result = [self extractEntryAtOffset:localHeaderOffset
+    BOOL result = [self extractAtLocalHeaderOffset:localHeaderOffset
                               compressedSize:compressedSize
                             uncompressedSize:uncompressedSize
                                        method:method
@@ -270,7 +270,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
     return result;
 }
 
-+ (BOOL)extractEntryAtOffset:(uint64_t)localHeaderOffset
++ (BOOL)extractAtLocalHeaderOffset:(uint64_t)localHeaderOffset
               compressedSize:(uint64_t)compressedSize
             uncompressedSize:(uint64_t)uncompressedSize
                        method:(uint16_t)method
@@ -279,7 +279,7 @@ static NSInteger DBFindEOCD(NSData *tail) {
                         toURL:(NSURL *)destination
                   maximumSize:(NSUInteger)maximumSize
                         error:(NSError **)error {
-    NSData *data = [self dataForEntryAtOffset:localHeaderOffset
+    NSData *data = [self dataAtLocalHeaderOffset:localHeaderOffset
                                compressedSize:compressedSize
                              uncompressedSize:uncompressedSize
                                         method:method
