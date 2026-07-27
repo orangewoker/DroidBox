@@ -190,6 +190,19 @@ private struct PlayerSettingsView: View {
                     }
                 }
 
+                if game.runtimeMode == .j2me {
+                    Section("性能诊断") {
+                        LabeledContent("设备温控", value: thermalStatus)
+                        LabeledContent(
+                            "低电量模式",
+                            value: ProcessInfo.processInfo.isLowPowerModeEnabled ? "已开启" : "未开启"
+                        )
+                        Text(performanceHint)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section {
                     Button(
                         "退出当前游戏",
@@ -209,6 +222,27 @@ private struct PlayerSettingsView: View {
                     Button("完成") { dismiss() }
                 }
             }
+        }
+    }
+
+    private var thermalStatus: String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: "正常"
+        case .fair: "轻微升温"
+        case .serious: "过热降频"
+        case .critical: "严重过热"
+        @unknown default: "未知"
+        }
+    }
+
+    private var performanceHint: String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .serious, .critical:
+            "当前 iPhone 正在热降频，掉帧主要与发热有关。退出游戏并让设备降温后再试。"
+        default:
+            ProcessInfo.processInfo.isLowPowerModeEnabled
+                ? "低电量模式会限制性能；关闭后通常能减少 Java ME 游戏掉帧。"
+                : "温控正常。少量掉帧主要来自 J2meJS 解释执行；本版已减少重复缩放和修改器后台轮询。"
         }
     }
 }

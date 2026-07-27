@@ -322,6 +322,8 @@ final class J2MEEmulatorView: UIView {
     private var attempts = 0
     private var requestedResolution = PlayerResolution.gameDefault
     private var stretch = false
+    private var appliedResolution: PlayerResolution?
+    private var appliedStretch: Bool?
     private var pressed = Set<J2MEButton>()
     private var modifierValueType = ModifierValueType.int32
 
@@ -340,6 +342,8 @@ final class J2MEEmulatorView: UIView {
         view.scrollView.isScrollEnabled = false
         view.scrollView.bounces = false
         view.scrollView.contentInsetAdjustmentBehavior = .never
+        view.scrollView.contentInset = .zero
+        view.scrollView.scrollIndicatorInsets = .zero
         view.isOpaque = true
         view.backgroundColor = .black
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -388,6 +392,9 @@ final class J2MEEmulatorView: UIView {
         requestedResolution = resolution
         self.stretch = stretch
         guard runtimeReady else { return }
+        guard appliedResolution != resolution || appliedStretch != stretch else { return }
+        appliedResolution = resolution
+        appliedStretch = stretch
         let size = resolution.size ?? (
             game.j2meScreenWidth ?? 240,
             game.j2meScreenHeight ?? 320
@@ -510,6 +517,8 @@ final class J2MEEmulatorView: UIView {
     private func openGame() {
         guard runtimeReady, !opened else { return }
         opened = true
+        appliedResolution = requestedResolution
+        appliedStretch = stretch
         let size = requestedResolution.size ?? (
             game.j2meScreenWidth ?? 240,
             game.j2meScreenHeight ?? 320

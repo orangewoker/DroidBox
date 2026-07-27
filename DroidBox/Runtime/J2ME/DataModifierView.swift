@@ -93,7 +93,7 @@ struct DataModifierView: View {
     @State private var errorMessage: String?
     @State private var editingCandidate: ModifierCandidate?
 
-    private let refreshTimer = Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()
+    private let refreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 10) {

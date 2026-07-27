@@ -44,6 +44,8 @@ private struct LibraryView:View {
     @State private var search=""
     @State private var grid=true
     @State private var sortNewest=true
+    @State private var renamingGame: GameRecord?
+    @State private var renameDraft = ""
     private var games:[GameRecord]{
         let filtered=environment.library.games.filter{search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || ($0.packageName?.localizedCaseInsensitiveContains(search) ?? false)}
         return filtered.sorted { sortNewest ? $0.createdAt > $1.createdAt : $0.title.localizedCompare($1.title) == .orderedAscending }
@@ -64,10 +66,61 @@ private struct LibraryView:View {
                         Button{DroidBoxFrontendHost.shared.presentGameImporter()}label:{Image(systemName:"plus")}.accessibilityLabel("导入游戏")
                     }
                 }
+                .alert(
+                    "修改游戏名称",
+                    isPresented: Binding(
+                        get: { renamingGame != nil },
+                        set: { if !$0 { renamingGame = nil } }
+                    )
+                ) {
+                    TextField("游戏名称", text: $renameDraft)
+                    Button("取消", role: .cancel) { renamingGame = nil }
+                    Button("保存") { saveRename() }
+                } message: {
+                    Text("输入新的游戏库显示名称，不会修改游戏文件。")
+                }
         }
     }
-    private var gridContent:some View{ScrollView{LazyVGrid(columns:[GridItem(.adaptive(minimum:150,maximum:220),spacing:16)],spacing:20){ForEach(games){GameTile(game:$0)}}.padding()}}
-    private var listContent:some View{List(games){GameRow(game:$0)}}
+    private var gridContent:some View{
+        ScrollView{
+            LazyVGrid(columns:[GridItem(.adaptive(minimum:150,maximum:220),spacing:16)],spacing:20){
+                ForEach(games){ game in
+                    GameTile(game: game)
+                        .contextMenu { renameButton(for: game) }
+                }
+            }
+            .padding()
+        }
+    }
+    private var listContent:some View{
+        List(games){ game in
+            GameRow(game: game)
+                .contextMenu { renameButton(for: game) }
+        }
+    }
+
+    private func renameButton(for game: GameRecord) -> some View {
+        Button("修改名称", systemImage: "pencil") {
+            renameDraft = game.title
+            renamingGame = game
+        }
+    }
+
+    private func saveRename() {
+        guard var game = renamingGame else { return }
+        let title = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        renamingGame = nil
+        guard !title.isEmpty, title != game.title else { return }
+        game.title = String(title.prefix(100))
+        do {
+            try environment.library.update(game)
+        } catch {
+            environment.importer.reportNotice(
+                title: "修改名称失败",
+                message: error.localizedDescription
+            )
+        }
+    }
 }
 
 private struct EmptyLibraryView: View {

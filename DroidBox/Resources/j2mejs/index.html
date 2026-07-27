@@ -848,6 +848,7 @@
     // values. Addresses are byte offsets in ASM.buffer.
     var _modifierSearch = null;
     var _modifierFrozen = Object.create(null);
+    var _modifierFreezeTimer = null;
     var _MODIFIER_MAX_MATCHES = 250000;
     var _MODIFIER_VISIBLE_MATCHES = 250;
 
@@ -1081,6 +1082,7 @@
             (_quickSnapshot.modifierFrozen || []).forEach(function(item) {
               _modifierFrozen[item.key] = { type: item.type, address: item.address, value: item.value };
             });
+            _ensureModifierFreezeTimer();
             _vcBase = _quickSnapshot.virtualNow;
             _vcRealBase = Date.now();
             try {
@@ -1301,7 +1303,10 @@
       value = Number(value);
       info.view[index] = value;
       var key = type + ':' + address;
-      if (freeze) _modifierFrozen[key] = { type: type, address: address, value: value };
+      if (freeze) {
+        _modifierFrozen[key] = { type: type, address: address, value: value };
+        _ensureModifierFreezeTimer();
+      }
       else delete _modifierFrozen[key];
       return _modifierPage();
     }
@@ -1311,8 +1316,9 @@
       return _modifierPage();
     }
 
-    setInterval(function() {
-      Object.keys(_modifierFrozen).forEach(function(key) {
+    function _applyModifierFrozenValues() {
+      var keys = Object.keys(_modifierFrozen);
+      keys.forEach(function(key) {
         var item = _modifierFrozen[key];
         try {
           var info = _modifierType(item.type);
@@ -1320,7 +1326,15 @@
           if (index >= 0 && index < info.view.length) info.view[index] = item.value;
         } catch(e) {}
       });
-    }, 100);
+      _modifierFreezeTimer = keys.length
+        ? setTimeout(_applyModifierFrozenValues, 100)
+        : null;
+    }
+
+    function _ensureModifierFreezeTimer() {
+      if (_modifierFreezeTimer || !Object.keys(_modifierFrozen).length) return;
+      _modifierFreezeTimer = setTimeout(_applyModifierFrozenValues, 100);
+    }
 
     window.j2meModifier = {
       firstScan: _modifierFirstScan,
