@@ -1,7 +1,46 @@
 import SwiftUI
-struct ImportProgressView:View{
+
+struct ImportProgressView: View {
     @Environment(AppEnvironment.self) private var environment
-    var body:some View{HStack(spacing:12){ProgressView(value:environment.importer.progress).frame(width:90);VStack(alignment:.leading){Text(environment.importer.stage.rawValue).font(.subheadline.weight(.medium));Text("\(Int(environment.importer.progress*100))%").font(.caption).foregroundStyle(.secondary)};Button{environment.importer.cancel()}label:{Image(systemName:"xmark.circle.fill")}.buttonStyle(.plain).accessibilityLabel("取消导入")}.padding(12).background(.regularMaterial,in:.rect(cornerRadius:8)).shadow(radius:5)}
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView(value: environment.importer.progress)
+                .frame(width: 90)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(environment.importer.stage.rawValue)
+                    .font(.subheadline.weight(.medium))
+                if !environment.importer.currentFileName.isEmpty {
+                    Text(environment.importer.currentFileName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Text(progressText)
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button { environment.importer.cancel() } label: {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("取消导入")
+        }
+        .padding(12)
+        .background(.regularMaterial, in: .rect(cornerRadius: 8))
+        .shadow(radius: 5)
+    }
+
+    private var progressText: String {
+        let importer = environment.importer
+        guard importer.totalFileCount > 1 else {
+            return "\(Int(importer.progress * 100))%"
+        }
+        let current = min(importer.completedFileCount + 1, importer.totalFileCount)
+        return "第 \(current)/\(importer.totalFileCount) 个 · \(Int(importer.progress * 100))%"
+    }
 }
 
 struct ImportProgressSheet: View {
@@ -16,12 +55,18 @@ struct ImportProgressSheet: View {
                 .font(.title.bold())
             Text(environment.importer.stage.rawValue)
                 .font(.headline)
+            if !environment.importer.currentFileName.isEmpty {
+                Text(environment.importer.currentFileName)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
             ProgressView(value: environment.importer.progress)
                 .progressViewStyle(.linear)
-            Text("\(Int(environment.importer.progress * 100))%")
+            Text(progressText)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-            Text("大型 APK 需要读取并解压数万个文件，请保持 DroidBox 在前台。完成或失败后都会显示明确结果。")
+            Text("“+”选择的文件会先复制到 Import，再自动解析和解压。扫描 Import 会连续处理全部文件，成功后删除原文件，失败文件会保留。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -31,5 +76,14 @@ struct ImportProgressSheet: View {
         }
         .padding(32)
         .presentationDetents([.medium])
+    }
+
+    private var progressText: String {
+        let importer = environment.importer
+        guard importer.totalFileCount > 1 else {
+            return "\(Int(importer.progress * 100))%"
+        }
+        let current = min(importer.completedFileCount + 1, importer.totalFileCount)
+        return "第 \(current)/\(importer.totalFileCount) 个 · \(Int(importer.progress * 100))%"
     }
 }

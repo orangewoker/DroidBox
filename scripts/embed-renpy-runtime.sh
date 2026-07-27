@@ -11,6 +11,8 @@ rm -rf "$APP_RESOURCES/base" "$APP_FRAMEWORKS/MetalANGLE.framework"
 ditto "$RUNTIME/base" "$APP_RESOURCES/base"
 rm -rf "$APP_RESOURCES/j2mejs"
 ditto "$SRCROOT/DroidBox/Resources/j2mejs" "$APP_RESOURCES/j2mejs"
+rm -rf "$APP_RESOURCES/ManicJ2MESkin"
+ditto "$SRCROOT/DroidBox/Resources/ManicJ2MESkin" "$APP_RESOURCES/ManicJ2MESkin"
 ditto "$SRCROOT/THIRD_PARTY_NOTICES.md" "$APP_RESOURCES/THIRD_PARTY_NOTICES.md"
 
 if [ "$PLATFORM_NAME" = "iphonesimulator" ]; then

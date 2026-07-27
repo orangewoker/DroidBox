@@ -23,7 +23,10 @@ final class AppEnvironment {
     }
     func open(_ url: URL) {
         if url.scheme == "droidbox", let raw=URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first(where:{$0.name=="url"})?.value, let file=URL(string:raw) { importer.start(url:file) }
-        else if ["apk","zip","jar"].contains(url.pathExtension.lowercased()) { importer.start(url:url) }
+        else if ["apk","zip","jar"].contains(url.pathExtension.lowercased()) {
+            let securityAccess = url.startAccessingSecurityScopedResource()
+            importer.startPickedURL(url, securityAccessAlreadyActive: securityAccess)
+        }
     }
 
     func scanImportDirectory(silentIfEmpty: Bool = false) {
@@ -45,7 +48,7 @@ final class AppEnvironment {
             return left > right
         } ?? []
 
-        guard let first = files.first else {
+        guard !files.isEmpty else {
             if !silentIfEmpty {
                 importer.reportNotice(
                     title: "Import 目录为空",
@@ -54,13 +57,7 @@ final class AppEnvironment {
             }
             return
         }
-        if files.count > 1 {
-            importer.reportNotice(
-                title: "找到 \(files.count) 个游戏文件",
-                message: "将先导入最新文件：\(first.lastPathComponent)。完成后再次点击扫描即可导入下一个。"
-            )
-        }
-        importer.start(url: first)
+        importer.startImportDirectory(files)
     }
 
     func openImportDirectoryInFiles() {

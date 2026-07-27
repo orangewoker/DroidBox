@@ -28,6 +28,9 @@ final class ImportCoordinator {
     private(set) var isImporting = false
     private(set) var errorMessage: String?
     private(set) var notice: ImportNotice?
+    private(set) var currentFileName = ""
+    private(set) var completedFileCount = 0
+    private(set) var totalFileCount = 0
     private var task: Task<Void, Never>?
 
     let library: GameLibrary
@@ -72,60 +75,254 @@ final class ImportCoordinator {
     }
 
     func start(url: URL, securityAccessAlreadyActive: Bool = false) {
-        guard !isImporting else {
-            if securityAccessAlreadyActive {
-                url.stopAccessingSecurityScopedResource()
-            }
-            notice = ImportNotice(title: "正在导入", message: "请等待当前导入结束后再选择其他文件。")
+        startBatch(
+            urls: [url],
+            deleteSourcesAfterSuccess: false,
+            securityAccessForFirstURL: securityAccessAlreadyActive
+        )
+    }
+
+    /// The right-top “+” uses the same path as Documents/Import: copy the picked
+    /// file into Import first, then parse and extract that application-owned copy.
+    func startPickedURL(_ url: URL, securityAccessAlreadyActive: Bool) {
+        guard begin(total: 1) else {
+            if securityAccessAlreadyActive { url.stopAccessingSecurityScopedResource() }
             return
+        }
+        let paths = library.paths
+        let maximumBytes = maximumFileSize
+        currentFileName = url.lastPathComponent
+
+        task = Task {
+            defer { isImporting = false }
+            do {
+                let local = try await Self.stagePickedFile(
+                    url,
+                    importDirectory: paths.importDirectory,
+                    maximumFileSize: maximumBytes,
+                    securityAccessAlreadyActive: securityAccessAlreadyActive
+                ) { [weak self] value in
+                    self?.set(.copying, value * 0.20)
+                }
+                let result = await runBatch(
+                    [.init(url: local, deleteAfterSuccess: true, securityAccessAlreadyActive: false)],
+                    initialProgress: 0.20
+                )
+                if Task.isCancelled { finishCancelled() }
+                else { finish(result) }
+            } catch is CancellationError {
+                finishCancelled()
+            } catch {
+                finishFailure(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Imports every supported file currently in Documents/Import. A file is
+    /// deleted only after its game data and metadata are safely committed.
+    func startImportDirectory(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        guard begin(total: urls.count) else { return }
+        let items = urls.map {
+            ImportWorkItem(
+                url: $0,
+                deleteAfterSuccess: true,
+                securityAccessAlreadyActive: false
+            )
+        }
+        task = Task {
+            defer { isImporting = false }
+            let result = await runBatch(items)
+            if Task.isCancelled { finishCancelled() }
+            else { finish(result) }
+        }
+    }
+
+    private struct ImportWorkItem: Sendable {
+        let url: URL
+        let deleteAfterSuccess: Bool
+        let securityAccessAlreadyActive: Bool
+    }
+
+    private struct BatchResult {
+        var games: [GameRecord] = []
+        var failures: [(file: String, message: String)] = []
+    }
+
+    private func startBatch(
+        urls: [URL],
+        deleteSourcesAfterSuccess: Bool,
+        securityAccessForFirstURL: Bool
+    ) {
+        guard begin(total: urls.count) else {
+            if securityAccessForFirstURL, let first = urls.first {
+                first.stopAccessingSecurityScopedResource()
+            }
+            return
+        }
+        let items = urls.enumerated().map { index, url in
+            ImportWorkItem(
+                url: url,
+                deleteAfterSuccess: deleteSourcesAfterSuccess,
+                securityAccessAlreadyActive: index == 0 && securityAccessForFirstURL
+            )
+        }
+        task = Task {
+            defer { isImporting = false }
+            let result = await runBatch(items)
+            if Task.isCancelled { finishCancelled() }
+            else { finish(result) }
+        }
+    }
+
+    private func begin(total: Int) -> Bool {
+        guard !isImporting else {
+            notice = ImportNotice(title: "正在导入", message: "请等待当前导入任务完成。")
+            return false
         }
         isImporting = true
         errorMessage = nil
         notice = nil
         stage = .copying
-        progress = 0.02
-        let paths = library.paths
-        let maximumBytes = maximumFileSize
+        progress = 0
+        currentFileName = ""
+        completedFileCount = 0
+        totalFileCount = total
+        return true
+    }
 
-        task = Task {
+    private func runBatch(
+        _ items: [ImportWorkItem],
+        initialProgress: Double = 0
+    ) async -> BatchResult {
+        var result = BatchResult()
+        let availableProgress = 1 - initialProgress
+        let itemSpan = availableProgress / Double(max(items.count, 1))
+
+        for (index, item) in items.enumerated() {
+            if Task.isCancelled { break }
+            currentFileName = item.url.lastPathComponent
+            completedFileCount = index
             do {
                 let game = try await Self.importFile(
-                    url,
-                    paths: paths,
-                    maximumFileSize: maximumBytes,
-                    securityAccessAlreadyActive: securityAccessAlreadyActive
-                ) { [weak self] stage, progress in
-                    self?.set(stage, progress)
+                    item.url,
+                    paths: library.paths,
+                    maximumFileSize: maximumFileSize,
+                    securityAccessAlreadyActive: item.securityAccessAlreadyActive
+                ) { [weak self] stage, localProgress in
+                    let overall = initialProgress
+                        + (Double(index) + localProgress) * itemSpan
+                    self?.set(stage, overall)
                 }
                 try library.add(game)
-                stage = .finished
-                progress = 1
-                if game.runtimeMode == .unavailable {
-                    let detail = game.compatibility.issues.first?.detail
-                        ?? game.compatibility.summary
-                    notice = ImportNotice(
-                        title: "已识别，但当前不能启动",
-                        message: "\(game.title) 已加入游戏库。\(detail)"
-                    )
-                } else if game.runtimeMode == .androidVM {
-                    notice = ImportNotice(
-                        title: "APK 已导入",
-                        message: "\(game.title) 已加入游戏库；普通 Android APK 仍需要 QEMU Core 与 Android Runtime 才能启动。"
-                    )
-                } else {
-                    notice = ImportNotice(
-                        title: "导入完成",
-                        message: "\(game.title) 已加入游戏库，可以打开详情页启动。"
-                    )
+                if item.deleteAfterSuccess {
+                    try? FileManager.default.removeItem(at: item.url)
                 }
+                result.games.append(game)
+                completedFileCount = index + 1
             } catch is CancellationError {
-                errorMessage = DroidBoxError.importCancelled.localizedDescription
-                notice = ImportNotice(title: "导入已取消", message: errorMessage ?? "")
+                break
             } catch {
-                errorMessage = error.localizedDescription
-                notice = ImportNotice(title: "导入失败", message: errorMessage ?? "未知错误")
+                result.failures.append((item.url.lastPathComponent, error.localizedDescription))
             }
-            isImporting = false
+        }
+        return result
+    }
+
+    private func finish(_ result: BatchResult) {
+        stage = .finished
+        progress = 1
+        if result.failures.isEmpty {
+            let names = result.games.map(\.title).joined(separator: "、")
+            notice = ImportNotice(
+                title: "导入完成（\(result.games.count) 个）",
+                message: names.isEmpty
+                    ? "没有找到可导入的游戏。"
+                    : "\(names) 已加入游戏库；Import 中的原文件已自动删除。"
+            )
+        } else if result.games.isEmpty {
+            let details = result.failures
+                .map { "\($0.file)：\($0.message)" }
+                .joined(separator: "\n")
+            finishFailure(details)
+        } else {
+            let details = result.failures.map(\.file).joined(separator: "、")
+            notice = ImportNotice(
+                title: "已导入 \(result.games.count) 个，失败 \(result.failures.count) 个",
+                message: "失败文件仍保留在 Import：\(details)"
+            )
+        }
+    }
+
+    private func finishCancelled() {
+        errorMessage = DroidBoxError.importCancelled.localizedDescription
+        notice = ImportNotice(title: "导入已取消", message: errorMessage ?? "")
+    }
+
+    private func finishFailure(_ message: String) {
+        errorMessage = message
+        notice = ImportNotice(title: "导入失败", message: message)
+    }
+
+
+    private nonisolated static func stagePickedFile(
+        _ source: URL,
+        importDirectory: URL,
+        maximumFileSize: UInt64,
+        securityAccessAlreadyActive: Bool,
+        progress update: @escaping @MainActor @Sendable (Double) -> Void
+    ) async throws -> URL {
+        let access = securityAccessAlreadyActive || source.startAccessingSecurityScopedResource()
+        defer {
+            if access { source.stopAccessingSecurityScopedResource() }
+        }
+
+        let standardizedImport = importDirectory.standardizedFileURL
+        if source.deletingLastPathComponent().standardizedFileURL == standardizedImport {
+            await update(1)
+            return source
+        }
+
+        let values = try source.resourceValues(forKeys: [.fileSizeKey])
+        let totalBytes = UInt64(values.fileSize ?? 0)
+        guard totalBytes <= maximumFileSize else { throw DroidBoxError.fileTooLarge }
+
+        let extensionName = source.pathExtension.lowercased()
+        guard ["apk", "zip", "jar"].contains(extensionName) else {
+            throw DroidBoxError.unsupported("仅支持 APK、ZIP 和 JAR 游戏文件。")
+        }
+
+        let baseName = source.deletingPathExtension().lastPathComponent
+        var destination = importDirectory.appending(path: source.lastPathComponent)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            destination = importDirectory.appending(
+                path: "\(baseName)-\(UUID().uuidString.prefix(8)).\(extensionName)"
+            )
+        }
+        let temporary = importDirectory.appending(path: ".incoming-\(UUID().uuidString)")
+
+        do {
+            FileManager.default.createFile(atPath: temporary.path, contents: nil)
+            let input = try FileHandle(forReadingFrom: source)
+            let output = try FileHandle(forWritingTo: temporary)
+            defer {
+                try? input.close()
+                try? output.close()
+            }
+            var copied: UInt64 = 0
+            while let chunk = try input.read(upToCount: 8 * 1024 * 1024), !chunk.isEmpty {
+                try Task.checkCancellation()
+                try output.write(contentsOf: chunk)
+                copied += UInt64(chunk.count)
+                await update(totalBytes > 0 ? min(1, Double(copied) / Double(totalBytes)) : 0.5)
+            }
+            try output.synchronize()
+            try FileManager.default.moveItem(at: temporary, to: destination)
+            await update(1)
+            return destination
+        } catch {
+            try? FileManager.default.removeItem(at: temporary)
+            throw error
         }
     }
 

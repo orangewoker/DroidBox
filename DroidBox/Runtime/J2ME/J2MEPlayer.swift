@@ -7,7 +7,7 @@ import WebKit
 enum J2MEButton: String, CaseIterable, Identifiable {
     case up, down, left, right, fire
     case num0, num1, num2, num3, num4, num5, num6, num7, num8, num9
-    case star, pound, softkeyLeft, softkeyRight
+    case star, pound, softkeyLeft, softkeyRight, menu
 
     var id: String { rawValue }
     var title: String {
@@ -31,6 +31,7 @@ enum J2MEButton: String, CaseIterable, Identifiable {
         case .pound: "#"
         case .softkeyLeft: "L"
         case .softkeyRight: "R"
+        case .menu: "MENU"
         }
     }
     var keyCode: String {
@@ -54,6 +55,7 @@ enum J2MEButton: String, CaseIterable, Identifiable {
         case .pound: "KeyR"
         case .softkeyLeft: "F1"
         case .softkeyRight: "F2"
+        case .menu: "F1"
         }
     }
 }
@@ -63,6 +65,10 @@ final class J2MEPlayerController {
     @ObservationIgnored private weak var emulator: J2MEEmulatorView?
     private(set) var ready = false
     private(set) var errorMessage: String?
+    private(set) var isMuted = false
+    private(set) var speedMultiplier = 1
+    private(set) var hasQuickSnapshot = false
+    private(set) var isSnapshotBusy = false
 
     func attach(_ emulator: J2MEEmulatorView) {
         self.emulator = emulator
@@ -82,6 +88,40 @@ final class J2MEPlayerController {
     func pause() { emulator?.pause() }
     func resume() { emulator?.resume() }
     func save() { emulator?.save() }
+
+    func toggleMute() {
+        isMuted.toggle()
+        emulator?.setMuted(isMuted)
+    }
+
+    func cycleSpeed() {
+        switch speedMultiplier {
+        case 1: speedMultiplier = 2
+        case 2: speedMultiplier = 4
+        case 4: speedMultiplier = 5
+        default: speedMultiplier = 1
+        }
+        emulator?.setSpeed(Double(speedMultiplier))
+    }
+
+    func captureQuickSnapshot() async -> Bool {
+        guard let emulator, ready, !isSnapshotBusy else {
+            return false
+        }
+        isSnapshotBusy = true
+        let success = await emulator.captureQuickSnapshot()
+        if success { hasQuickSnapshot = true }
+        isSnapshotBusy = false
+        return success
+    }
+
+    func restoreQuickSnapshot() async -> Bool {
+        guard let emulator, hasQuickSnapshot, !isSnapshotBusy else { return false }
+        isSnapshotBusy = true
+        let success = await emulator.restoreQuickSnapshot()
+        isSnapshotBusy = false
+        return success
+    }
 }
 
 struct J2MEPlayerView: View {
@@ -89,30 +129,18 @@ struct J2MEPlayerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var controller = J2MEPlayerController()
     let game: GameRecord
+    let onSettings: () -> Void
     let onExit: () -> Void
 
     var body: some View {
-        GeometryReader { geometry in
-            let showsControls = environment.settings.virtualControlsEnabled
-            VStack(spacing: 0) {
-                J2MEWebView(
-                    game: game,
-                    controller: controller,
-                    resolution: environment.settings.playerResolution,
-                    stretch: environment.settings.stretchGameDisplay,
-                    onExit: onExit
-                )
-                .frame(height: showsControls ? geometry.size.height * 0.57 : geometry.size.height)
-
-                if showsControls {
-                    J2MEKeypad { controller.press($0, pressed: $1) }
-                        .opacity(environment.settings.virtualControlsOpacity)
-                        .frame(maxHeight: .infinity)
-                        .background(.black)
-                }
-            }
-        }
-        .background(.black)
+        ManicJ2MESkinView(
+            game: game,
+            controller: controller,
+            resolution: environment.settings.playerResolution,
+            stretch: environment.settings.stretchGameDisplay,
+            onSettings: onSettings,
+            onExit: onExit
+        )
         .overlay {
             if !controller.ready {
                 VStack(spacing: 14) {
@@ -143,7 +171,7 @@ struct J2MEPlayerView: View {
     }
 }
 
-private struct J2MEWebView: UIViewRepresentable {
+struct J2MEWebView: UIViewRepresentable {
     let game: GameRecord
     let controller: J2MEPlayerController
     let resolution: PlayerResolution
@@ -329,6 +357,55 @@ final class J2MEEmulatorView: UIView {
 
     func pause() { evaluate("if (window.j2meAPI) window.j2meAPI.pause();") }
     func resume() { evaluate("if (window.j2meAPI) window.j2meAPI.resume();") }
+    func setMuted(_ muted: Bool) {
+        evaluate("if (window.j2meAPI && window.j2meAPI.setMute) window.j2meAPI.setMute(\(muted));")
+    }
+    func setSpeed(_ multiplier: Double) {
+        let value = String(
+            format: "%.2f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            multiplier
+        )
+        evaluate("if (window.j2meAPI && window.j2meAPI.setSpeed) window.j2meAPI.setSpeed(\(value));")
+    }
+    func captureQuickSnapshot() async -> Bool {
+        do {
+            let raw = try await webView.callAsyncJavaScript(
+                """
+                if (!window.j2meAPI || !window.j2meAPI.captureQuickSnapshot) {
+                  return { success: false, error: 'Snapshot API unavailable' };
+                }
+                return window.j2meAPI.captureQuickSnapshot();
+                """,
+                arguments: [:],
+                in: nil,
+                contentWorld: .page
+            )
+            return (raw as? [String: Any])?["success"] as? Bool ?? false
+        } catch {
+            onError?("快照保存失败：\(error.localizedDescription)")
+            return false
+        }
+    }
+    func restoreQuickSnapshot() async -> Bool {
+        do {
+            let raw = try await webView.callAsyncJavaScript(
+                """
+                if (!window.j2meAPI || !window.j2meAPI.restoreQuickSnapshot) {
+                  return { success: false, error: 'Snapshot API unavailable' };
+                }
+                return window.j2meAPI.restoreQuickSnapshot();
+                """,
+                arguments: [:],
+                in: nil,
+                contentWorld: .page
+            )
+            return (raw as? [String: Any])?["success"] as? Bool ?? false
+        } catch {
+            onError?("快照加载失败：\(error.localizedDescription)")
+            return false
+        }
+    }
     func save() {
         evaluate("""
         if (window.j2meAPI && window.j2meAPI.getSaveData) {

@@ -45,8 +45,9 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
 
     /// SwiftUI's fileImporter is presented through SDL's manually hosted scene and
     /// did not reliably deliver its completion callback on device. Present UIKit's
-    /// picker directly, acquire the security scope before the delegate returns,
-    /// and avoid a second multi-gigabyte copy of a large APK.
+    /// picker directly and acquire the security scope before the delegate returns.
+    /// The selected file is streamed into Documents/Import with visible progress
+    /// before the normal Import-directory pipeline processes it.
     func presentGameImporter() {
         guard let environment else { return }
         guard !environment.importer.isImporting else {
@@ -99,7 +100,10 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
         // a second dismissal completion was the reason tapping “打开” produced no
         // import and no feedback on device.
         let securityAccess = url.startAccessingSecurityScopedResource()
-        environment?.importer.start(url: url, securityAccessAlreadyActive: securityAccess)
+        environment?.importer.startPickedURL(
+            url,
+            securityAccessAlreadyActive: securityAccess
+        )
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {

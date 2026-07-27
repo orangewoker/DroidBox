@@ -13,6 +13,7 @@ test "$MIN" = "18.0"
 file "$APP/DroidBox" | grep -q 'arm64'
 test -f "$APP/j2mejs/index.html"
 test -f "$APP/j2mejs/java/classes.jar"
+test -f "$APP/ManicJ2MESkin/iphone_edgetoedge_portrait.pdf"
 if codesign -dvv "$APP" >/dev/null 2>&1; then echo "Unexpected code signature" >&2; exit 1; fi
 if otool -L "$APP/DroidBox" | grep -E '/Users/|/Volumes/|DerivedData'; then echo "Developer path found" >&2; exit 1; fi
 echo "Verified unsigned DroidBox IPA: arm64, iOS $MIN, no provisioning profile"

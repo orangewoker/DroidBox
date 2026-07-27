@@ -17,7 +17,11 @@ struct PlayerContainerView: View {
             case .renpy:
                 RenPyLaunchView(game: game)
             case .j2me:
-                J2MEPlayerView(game: game, onExit: close)
+                J2MEPlayerView(
+                    game: game,
+                    onSettings: { settingsPresented = true },
+                    onExit: close
+                )
             case .androidVM:
                 if let vm {
                     AndroidVMPlayerView(
@@ -37,7 +41,7 @@ struct PlayerContainerView: View {
                 )
             }
 
-            if controls {
+            if controls && game.runtimeMode != .j2me {
                 VStack {
                     HStack {
                         Button { settingsPresented = true } label: {
@@ -80,7 +84,9 @@ struct PlayerContainerView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             vm?.stop()
         }
-        .onTapGesture { if !controls { controls = true } }
+        .onTapGesture {
+            if game.runtimeMode != .j2me && !controls { controls = true }
+        }
     }
 
     private func close() {
@@ -166,13 +172,20 @@ private struct PlayerSettingsView: View {
                 }
 
                 Section("虚拟按键") {
-                    Toggle("显示虚拟按键", isOn: $settings.virtualControlsEnabled)
-                    if settings.virtualControlsEnabled {
-                        LabeledContent(
-                            "透明度",
-                            value: "\(Int(settings.virtualControlsOpacity * 100))%"
-                        )
-                        Slider(value: $settings.virtualControlsOpacity, in: 0.25...1)
+                    if game.runtimeMode == .j2me {
+                        LabeledContent("Java ME 按键", value: "诺基亚机身皮肤")
+                        Text("JAR 游戏固定使用 JavaPocket 的完整方向键、功能键和数字键盘。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Toggle("显示虚拟按键", isOn: $settings.virtualControlsEnabled)
+                        if settings.virtualControlsEnabled {
+                            LabeledContent(
+                                "透明度",
+                                value: "\(Int(settings.virtualControlsOpacity * 100))%"
+                            )
+                            Slider(value: $settings.virtualControlsOpacity, in: 0.25...1)
+                        }
                     }
                 }
 
