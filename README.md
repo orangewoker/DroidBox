@@ -70,3 +70,5 @@ Android-x86 9.0-r2 Runtime，QEMU 启动后通过本机 QMP、ADB 和 VNC/RFB �
 必须包含 x86_64 原生库或为纯 Java 应用。
 
 1.3.1 修复 Android Runtime 校验文件携带 CI 绝对路径的问题，离线下载脚本现在可以直接校验发行资产。
+
+1.3.2 修复 LiveContainer 下 `Bundle.main` 指向宿主导致 QEMU Core 误报未嵌入的问题；Android Runtime 在线安装和 ZIP 导入不再被 Core 检测结果锁死，JIT 重新检测会弹出明确结果。

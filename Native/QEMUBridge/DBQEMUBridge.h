@@ -5,6 +5,7 @@ typedef void (^DBQEMUExitHandler)(NSInteger exitCode, NSString * _Nullable messa
 
 @interface DBQEMUBridge : NSObject
 @property(class, nonatomic, readonly) BOOL coreBundled;
+@property(class, nonatomic, readonly) NSURL *runtimeBundleURL;
 @property(atomic, readonly, getter=isRunning) BOOL running;
 - (BOOL)startWithArguments:(NSArray<NSString *> *)arguments
                environment:(NSDictionary<NSString *, NSString *> *)environment
@@ -12,4 +13,3 @@ typedef void (^DBQEMUExitHandler)(NSInteger exitCode, NSString * _Nullable messa
                       error:(NSError **)error;
 @end
 NS_ASSUME_NONNULL_END
-

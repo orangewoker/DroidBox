@@ -94,7 +94,7 @@ final class RuntimeManager {
     func qemuArguments(gameID: UUID, qmpPort: UInt16, adbPort: UInt16, vncDisplay: Int, memoryMB: Int = 1536) throws -> [String] {
         guard let manifest = installedManifest else { throw DroidBoxError.runtimeMissing }
         let overlay = paths.android.appending(path:"overlays").appending(path:gameID.uuidString).appending(path:"disk.qcow2")
-        let qemuResources = Bundle.main.resourceURL?.appending(path: "qemu").path ?? ""
+        let qemuResources = DBQEMUBridge.runtimeBundleURL.appending(path: "qemu").path
         let replacements = ["{runtime}": runtimeRoot.path, "{overlay}": overlay.path, "{base}": baseImageURL.path, "{qemu}": qemuResources, "{qmpPort}": String(qmpPort), "{adbPort}": String(adbPort), "{vncDisplay}": String(vncDisplay), "{memoryMB}": String(memoryMB)]
         if let custom = manifest.qemuArguments, !custom.isEmpty {
             return custom.map { argument in replacements.reduce(argument) { $0.replacingOccurrences(of: $1.key, with: $1.value) } }

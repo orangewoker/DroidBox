@@ -5,17 +5,68 @@
 #import <stdlib.h>
 #import <string.h>
 
+static void DBQEMUBridgeBinaryAnchor(void) {}
+
 @interface DBQEMUBridge ()
 @property(atomic, readwrite, getter=isRunning) BOOL running;
 @end
 
 @implementation DBQEMUBridge
 
-+ (NSURL *)coreURL {
-    return [NSBundle.mainBundle.privateFrameworksURL URLByAppendingPathComponent:@"qemu-x86_64-softmmu.framework/qemu-x86_64-softmmu"];
++ (NSURL *)binaryBundleURL {
+    Dl_info info = {0};
+    if (dladdr((const void *)&DBQEMUBridgeBinaryAnchor, &info) != 0 && info.dli_fname) {
+        NSURL *binaryURL = [NSURL fileURLWithFileSystemRepresentation:info.dli_fname
+                                                         isDirectory:NO
+                                                       relativeToURL:nil];
+        return binaryURL.URLByDeletingLastPathComponent;
+    }
+    return NSBundle.mainBundle.bundleURL;
 }
 
-+ (BOOL)coreBundled { return [[NSFileManager defaultManager] isExecutableFileAtPath:self.coreURL.path]; }
++ (NSArray<NSURL *> *)coreCandidates {
+    NSMutableArray<NSURL *> *roots = [NSMutableArray array];
+    NSURL *binaryRoot = self.binaryBundleURL;
+    if (binaryRoot) [roots addObject:binaryRoot];
+    NSBundle *classBundle = [NSBundle bundleForClass:self];
+    if (classBundle.bundleURL) [roots addObject:classBundle.bundleURL];
+    if (NSBundle.mainBundle.bundleURL) [roots addObject:NSBundle.mainBundle.bundleURL];
+    for (NSBundle *bundle in NSBundle.allBundles) {
+        if (bundle.bundleURL) [roots addObject:bundle.bundleURL];
+    }
+
+    NSMutableArray<NSURL *> *candidates = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (NSURL *root in roots) {
+        NSURL *candidate = [[root URLByAppendingPathComponent:@"Frameworks" isDirectory:YES]
+            URLByAppendingPathComponent:@"qemu-x86_64-softmmu.framework/qemu-x86_64-softmmu"];
+        if (![seen containsObject:candidate.path]) {
+            [seen addObject:candidate.path];
+            [candidates addObject:candidate];
+        }
+    }
+    return candidates;
+}
+
++ (NSURL *)coreURL {
+    for (NSURL *candidate in self.coreCandidates) {
+        if ([[NSFileManager defaultManager] fileExistsAtPath:candidate.path]) return candidate;
+    }
+    return self.coreCandidates.firstObject;
+}
+
++ (BOOL)coreBundled {
+    NSURL *url = self.coreURL;
+    return url && [[NSFileManager defaultManager] fileExistsAtPath:url.path];
+}
+
++ (NSURL *)runtimeBundleURL {
+    NSURL *core = self.coreURL;
+    if (core && [[NSFileManager defaultManager] fileExistsAtPath:core.path]) {
+        return core.URLByDeletingLastPathComponent.URLByDeletingLastPathComponent.URLByDeletingLastPathComponent;
+    }
+    return self.binaryBundleURL;
+}
 
 - (BOOL)startWithArguments:(NSArray<NSString *> *)arguments
                environment:(NSDictionary<NSString *,NSString *> *)environment
@@ -27,7 +78,7 @@
             return NO;
         }
         if (!DBQEMUBridge.coreBundled) {
-            if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:2 userInfo:@{NSLocalizedDescriptionKey:@"qemu-aarch64-softmmu.framework is missing"}];
+            if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:2 userInfo:@{NSLocalizedDescriptionKey:@"qemu-x86_64-softmmu.framework is missing"}];
             return NO;
         }
         self.running = YES;

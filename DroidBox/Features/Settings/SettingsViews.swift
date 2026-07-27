@@ -1,10 +1,8 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct RuntimeSettingsView: View {
     @Environment(AppEnvironment.self) private var environment
-    @State private var importing = false
-    @State private var errorMessage: String?
+    @State private var notice: RuntimeSettingsNotice?
 
     var body: some View {
         NavigationStack {
@@ -26,9 +24,11 @@ struct RuntimeSettingsView: View {
                     Button("在线安装 Android Runtime", systemImage: "arrow.down.circle") {
                         installDefaultRuntime()
                     }
-                    .disabled(!DBQEMUBridge.coreBundled || environment.runtimeManager.isInstallingRuntime)
-                    Button("导入 Runtime ZIP", systemImage: "square.and.arrow.down") { importing = true }
-                        .disabled(!DBQEMUBridge.coreBundled || environment.runtimeManager.isInstallingRuntime)
+                    .disabled(environment.runtimeManager.isInstallingRuntime)
+                    Button("导入 Runtime ZIP", systemImage: "square.and.arrow.down") {
+                        DroidBoxFrontendHost.shared.presentRuntimeImporter()
+                    }
+                        .disabled(environment.runtimeManager.isInstallingRuntime)
                     Text("默认 Runtime 基于 Android-x86 9.0-r2，使用 UTM/QEMU x86_64 Core。支持包含 x86_64 原生库或纯 Java 代码的 APK；仅含 ARM 原生库的 APK 暂不兼容。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -39,7 +39,13 @@ struct RuntimeSettingsView: View {
                 }
                 Section("JIT") {
                     LabeledContent("状态", value: environment.diagnostics.jitText)
-                    Button("重新检测", systemImage: "arrow.clockwise") { environment.runtimeManager.probeJIT() }
+                    Button("重新检测", systemImage: "arrow.clockwise") {
+                        environment.runtimeManager.probeJIT()
+                        notice = RuntimeSettingsNotice(
+                            title: "JIT 检测完成",
+                            message: environment.runtimeManager.jitMethod
+                        )
+                    }
                     Text("检测会区分 MAP_JIT 权限和 StikDebug 调试器权限。只有具备 MAP_JIT，或进程确实处于 CS_DEBUGGED/P_TRACED 状态且能创建可执行内存时，才会显示可用。Ren'Py 与 Java ME 不依赖 JIT。")
                         .font(.footnote).foregroundStyle(.secondary)
                     if environment.runtimeManager.jitStatus != .available {
@@ -69,16 +75,13 @@ struct RuntimeSettingsView: View {
                 }
             }
             .navigationTitle("运行时")
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.zip], allowsMultipleSelection: false) { result in
-                guard case .success(let urls) = result, let url = urls.first else { return }
-                Task {
-                    do { try await environment.runtimeManager.importRuntime(url) }
-                    catch { errorMessage = error.localizedDescription }
-                }
+            .alert(item: $notice) { notice in
+                Alert(
+                    title: Text(notice.title),
+                    message: Text(notice.message),
+                    dismissButton: .default(Text("好"))
+                )
             }
-            .alert("导入失败", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-                Button("好", role: .cancel) {}
-            } message: { Text(errorMessage ?? "") }
         }
     }
 
@@ -86,11 +89,18 @@ struct RuntimeSettingsView: View {
         Task {
             do {
                 try await environment.runtimeManager.installDefaultRuntime()
+                notice = RuntimeSettingsNotice(title: "安装完成", message: environment.runtimeManager.runtimeMessage)
             } catch {
-                errorMessage = error.localizedDescription
+                notice = RuntimeSettingsNotice(title: "安装失败", message: error.localizedDescription)
             }
         }
     }
+}
+
+private struct RuntimeSettingsNotice: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 struct DiagnosticsView: View {

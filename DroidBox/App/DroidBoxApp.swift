@@ -7,12 +7,14 @@ import UniformTypeIdentifiers
 /// SwiftUI library in a normal UIWindow.
 @MainActor
 final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
+    private enum PickerPurpose: Equatable { case games, androidRuntime }
     static let shared = DroidBoxFrontendHost()
 
     private var window: UIWindow?
     private var environment: AppEnvironment?
     private var launchSignal: DispatchSemaphore?
     private var activeDocumentPicker: UIDocumentPickerViewController?
+    private var activePickerPurpose = PickerPurpose.games
     private var activeRenPyGameID: UUID?
 
     var renPyRuntimeAvailable: Bool {
@@ -75,6 +77,28 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
         picker.delegate = self
         picker.allowsMultipleSelection = true
         picker.shouldShowFileExtensions = true
+        activePickerPurpose = .games
+        activeDocumentPicker = picker
+        presenter.present(picker, animated: true)
+    }
+
+    func presentRuntimeImporter() {
+        guard let environment else { return }
+        guard !environment.runtimeManager.isInstallingRuntime else {
+            environment.importer.reportNotice(title: "正在安装", message: "请等待当前 Runtime 任务完成。")
+            return
+        }
+        guard activeDocumentPicker == nil else { return }
+        guard var presenter = window?.rootViewController else {
+            environment.importer.reportNotice(title: "无法打开文件选择器", message: "找不到当前显示窗口。")
+            return
+        }
+        while let presented = presenter.presentedViewController { presenter = presented }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.zip], asCopy: true)
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        picker.shouldShowFileExtensions = true
+        activePickerPurpose = .androidRuntime
         activeDocumentPicker = picker
         presenter.present(picker, animated: true)
     }
@@ -84,6 +108,22 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
         didPickDocumentsAt urls: [URL]
     ) {
         activeDocumentPicker = nil
+        if activePickerPurpose == .androidRuntime {
+            guard let url = urls.first, url.pathExtension.lowercased() == "zip" else {
+                environment?.importer.reportNotice(title: "不支持这个文件", message: "请选择 Android Runtime ZIP。")
+                return
+            }
+            guard let environment else { return }
+            Task {
+                do {
+                    try await environment.runtimeManager.importRuntime(url)
+                    environment.importer.reportNotice(title: "Runtime 导入完成", message: environment.runtimeManager.runtimeMessage)
+                } catch {
+                    environment.importer.reportNotice(title: "Runtime 导入失败", message: error.localizedDescription)
+                }
+            }
+            return
+        }
         guard !urls.isEmpty else {
             environment?.importer.reportPickerCancelled()
             return
@@ -104,7 +144,7 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         activeDocumentPicker = nil
-        environment?.importer.reportPickerCancelled()
+        if activePickerPurpose == .games { environment?.importer.reportPickerCancelled() }
     }
 
     @discardableResult
