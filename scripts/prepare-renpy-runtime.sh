@@ -53,7 +53,10 @@ define config.version = "1.0"
 define build.name = "DroidBoxRenPyRuntime"
 EOF
 
-"$SDK/renpy.sh" launcher ios_create "$LOADER" "$OUTPUT"
+(
+  cd "$SDK"
+  ./renpy.sh launcher ios_create "$LOADER" "$OUTPUT"
+)
 
 test -f "$OUTPUT/base/main.py"
 test -f "$OUTPUT/prebuilt/release/librenpy.a"
