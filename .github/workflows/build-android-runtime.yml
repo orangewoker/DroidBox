@@ -1,10 +1,37 @@
 name: Build Android Runtime
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios]
+    paths:
+      - scripts/build-android-runtime.sh
+      - .github/workflows/build-android-runtime.yml
+permissions:
+  contents: write
+concurrency:
+  group: droidbox-android-runtime
+  cancel-in-progress: false
 jobs:
-  manifest-check:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - run: python3 -m json.tool Runtimes/manifests/lineage-arm64-default.json
-      - run: echo "Runtime image publication is blocked until a reproducible pinned Android image build and release URL are supplied." && exit 1
-
+      - name: Install image tools
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full qemu-utils e2fsprogs
+      - name: Build persistent Android-x86 Runtime
+        run: chmod +x scripts/build-android-runtime.sh && ./scripts/build-android-runtime.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DroidBox-Android-Runtime
+          path: dist/android-runtime/*
+          compression-level: 0
+      - name: Publish runtime release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-runtime-v1
+          target_commitish: ${{ github.sha }}
+          name: DroidBox Android Runtime v1
+          body: Persistent Android-x86 9.0-r2 guest image for the DroidBox UTM/QEMU runtime.
+          prerelease: true
+          files: dist/android-runtime/*

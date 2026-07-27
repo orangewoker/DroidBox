@@ -16,9 +16,20 @@ struct RuntimeSettingsView: View {
                             ? environment.runtimeManager.runtimeMessage
                             : "不可用（QEMU Core 未嵌入）"
                     )
+                    if environment.runtimeManager.isInstallingRuntime {
+                        HStack {
+                            ProgressView()
+                            Text(environment.runtimeManager.installMessage)
+                                .font(.subheadline)
+                        }
+                    }
+                    Button("在线安装 Android Runtime", systemImage: "arrow.down.circle") {
+                        installDefaultRuntime()
+                    }
+                    .disabled(!DBQEMUBridge.coreBundled || environment.runtimeManager.isInstallingRuntime)
                     Button("导入 Runtime ZIP", systemImage: "square.and.arrow.down") { importing = true }
-                        .disabled(!DBQEMUBridge.coreBundled)
-                    Text("Android Runtime 是供 QEMU 虚拟机启动 Android 客体系统的磁盘镜像，不是通用游戏插件。此 IPA 没有 QEMU Core，所以单独导入镜像也无法运行普通 Android APK。")
+                        .disabled(!DBQEMUBridge.coreBundled || environment.runtimeManager.isInstallingRuntime)
+                    Text("默认 Runtime 基于 Android-x86 9.0-r2，使用 UTM/QEMU x86_64 Core。支持包含 x86_64 原生库或纯 Java 代码的 APK；仅含 ARM 原生库的 APK 暂不兼容。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -68,6 +79,16 @@ struct RuntimeSettingsView: View {
             .alert("导入失败", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("好", role: .cancel) {}
             } message: { Text(errorMessage ?? "") }
+        }
+    }
+
+    private func installDefaultRuntime() {
+        Task {
+            do {
+                try await environment.runtimeManager.installDefaultRuntime()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

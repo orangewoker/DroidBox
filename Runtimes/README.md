@@ -1,14 +1,16 @@
 # Runtime packages
 
-Large Runtime binaries are never committed here. An Android Runtime ZIP has this root layout:
+Large Runtime binaries are never committed here. The default Android-x86 Runtime ZIP has this root layout:
 
 ```text
 runtime.json
 system.qcow2
-firmware/...
+kernel
+initrd.img
 ```
 
-`runtime.json` follows `Runtimes/manifests/lineage-arm64-default.json`;其 SHA-256 描述未压缩的 `system.qcow2`。
+`runtime.json` 中的 SHA-256 描述未压缩的 `system.qcow2`。当前 Full Runtime IPA 内置
+UTM/QEMU x86_64 Core，因此清单的 `architecture` 必须是 `x86_64`。
 
 ## 自定义 qemuArguments
 
@@ -23,4 +25,3 @@ firmware/...
 | ADB | `hostfwd=tcp:127.0.0.1:{adbPort}-:5555` | 无法安装和启动 APK |
 
 应用只接受本机无密码的 VNC 连接,`-vnc` 上不要加 `password` 或改成 Unix socket。
-

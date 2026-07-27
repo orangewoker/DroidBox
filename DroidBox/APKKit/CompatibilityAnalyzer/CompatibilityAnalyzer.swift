@@ -15,11 +15,12 @@ enum CompatibilityAnalyzer {
         // and game assets are interpreted by DroidBox's iOS build of Ren'Py.
         if engine.engine != .renpy7,
            engine.engine != .renpy8,
-           abi.allSatisfy({ $0 == .x86 || $0 == .x86_64 }) {
+           !abi.contains(.x86_64),
+           !abi.contains(.javaOnly) {
             issues.append(.init(
                 severity: .error,
-                title: "仅支持 x86",
-                detail: "当前 Android ARM64 运行时无法执行此安装包。"
+                title: "缺少 x86_64 原生库",
+                detail: "当前 Android-x86 Runtime 无法执行仅包含 ARM 原生库的安装包。"
             ))
         }
         if manifest.permissions.contains(where: { $0.localizedCaseInsensitiveContains("BILLING") }) {

@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-MANIFEST="${1:-Runtimes/manifests/lineage-arm64-default.json}"
-URL="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["downloadURL"])' "$MANIFEST")"
-SHA="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["sha256"])' "$MANIFEST")"
-test "$URL" != "RELEASE_ASSET_URL_REQUIRED"
+BASE="https://github.com/orangewoker/DroidBox/releases/download/android-runtime-v1"
+NAME="DroidBox-Android-x86_64-9.0-r2-droidbox.1-runtime.zip"
 mkdir -p Runtimes/downloads
-curl -fL --retry 3 -C - "$URL" -o Runtimes/downloads/android-runtime.zip
-echo "$SHA  Runtimes/downloads/android-runtime.zip" | shasum -a 256 -c -
-
+curl -fL --retry 5 -C - "$BASE/$NAME" -o "Runtimes/downloads/$NAME"
+curl -fL --retry 5 "$BASE/$NAME.sha256" -o "Runtimes/downloads/$NAME.sha256"
+(cd Runtimes/downloads && shasum -a 256 -c "$NAME.sha256")

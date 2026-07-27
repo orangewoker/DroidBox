@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DERIVED="$ROOT/build/DerivedData"
 DIST="$ROOT/dist"
 "$ROOT/scripts/prepare-renpy-runtime.sh"
+"$ROOT/scripts/prepare-qemu-core.sh"
 rm -rf "$DERIVED" "$DIST/Payload"
 mkdir -p "$DIST/Payload"
 
@@ -22,6 +23,10 @@ fi
 if [ -d "$ROOT/Vendor/QEMUCore/share" ]; then
   mkdir -p "$APP/qemu"
   ditto "$ROOT/Vendor/QEMUCore/share" "$APP/qemu"
+fi
+if [ -d "$ROOT/Vendor/QEMUCore/licenses" ]; then
+  mkdir -p "$APP/ThirdPartyLicenses"
+  ditto "$ROOT/Vendor/QEMUCore/licenses" "$APP/ThirdPartyLicenses/UTM-QEMU"
 fi
 ditto "$APP" "$DIST/Payload/DroidBox.app"
 (cd "$DIST" && zip -qry "DroidBox-unsigned.ipa" Payload)

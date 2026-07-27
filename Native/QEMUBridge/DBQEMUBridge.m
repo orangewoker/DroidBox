@@ -1,6 +1,7 @@
 // Launcher design follows UTM's Apache-2.0 UTMQemuSystem process boundary.
 #import "DBQEMUBridge.h"
 #import <dlfcn.h>
+#import <pthread.h>
 #import <stdlib.h>
 #import <string.h>
 
@@ -11,7 +12,7 @@
 @implementation DBQEMUBridge
 
 + (NSURL *)coreURL {
-    return [NSBundle.mainBundle.privateFrameworksURL URLByAppendingPathComponent:@"qemu-aarch64-softmmu.framework/qemu-aarch64-softmmu"];
+    return [NSBundle.mainBundle.privateFrameworksURL URLByAppendingPathComponent:@"qemu-x86_64-softmmu.framework/qemu-x86_64-softmmu"];
 }
 
 + (BOOL)coreBundled { return [[NSFileManager defaultManager] isExecutableFileAtPath:self.coreURL.path]; }
@@ -36,6 +37,16 @@
     NSDictionary<NSString *, NSString *> *capturedEnvironment = [environment copy];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         @autoreleasepool {
+            pthread_t qemuThread = pthread_self();
+            atexit_b(^{
+                if (pthread_equal(pthread_self(), qemuThread)) {
+                    self.running = NO;
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        exitHandler(-1, @"QEMU terminated its worker thread");
+                    });
+                    pthread_exit(NULL);
+                }
+            });
             NSInteger exitCode = -1; NSString *message = nil;
             void *handle = dlopen(DBQEMUBridge.coreURL.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
             if (!handle) {
@@ -48,7 +59,7 @@
                     message = @"Required QEMU entry points are missing";
                 } else {
                     [capturedEnvironment enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) { setenv(key.UTF8String, value.UTF8String, 1); }];
-                    NSMutableArray<NSString *> *all = [NSMutableArray arrayWithObject:@"qemu-system-aarch64"]; [all addObjectsFromArray:capturedArguments];
+                    NSMutableArray<NSString *> *all = [NSMutableArray arrayWithObject:@"qemu-system-x86_64"]; [all addObjectsFromArray:capturedArguments];
                     const char **argv = calloc(all.count + 1, sizeof(char *));
                     for (NSUInteger i = 0; i < all.count; i++) argv[i] = strdup(all[i].fileSystemRepresentation);
                     exitCode = qemuInit((int)all.count, argv, NULL);

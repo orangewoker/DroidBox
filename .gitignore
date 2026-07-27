@@ -7,5 +7,7 @@ Runtimes/*.zip
 Runtimes/*.qcow2
 Runtimes/*.img
 Vendor/RenPy/Generated/
+Vendor/QEMUCore/
+Vendor/cache/
 *.xcuserstate
 xcuserdata/

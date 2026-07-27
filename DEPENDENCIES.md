@@ -11,11 +11,11 @@
 
 Renios 包含 MIT、LGPL 及其他第三方许可组件。分发 IPA 时必须保留 Ren'Py 官方许可清单要求的声明。
 
-## 尚未进入默认 IPA
+## Android VM 组件
 
 | 项目 | 固定版本 | 许可 | 用途 |
 |---|---|---|---|
-| UTM | v5.0.3 / `e4a4c34b671284263fc69f81b607de494d7e9b65` | Apache-2.0 / GPL-2.0-or-later | QEMU iOS 构建基础 |
-| QEMU | `10.0.2-utm` | GPL-2.0-or-later | ARM64 Android VM |
-| LineageOS/AOSP runtime | `21.0-qemu-2026.07` 占位 | Apache-2.0 等 | Android guest |
+| UTM | v5.0.3 / `e4a4c34b671284263fc69f81b607de494d7e9b65` | Apache-2.0 / GPL-2.0-or-later | 提供固定校验的 iOS QEMU Framework |
+| QEMU | `10.0.2-utm` | GPL-2.0-or-later | x86_64 Android VM |
+| Android-x86 | `9.0-r2` | Apache-2.0 / GPL-2.0 等 | 可持久化 Android 客体系统 |
 | J2ME.js / FreeJ2ME Web runtime | 内置 | 上游组件各自许可 | Java ME/MIDP 游戏解释执行 |

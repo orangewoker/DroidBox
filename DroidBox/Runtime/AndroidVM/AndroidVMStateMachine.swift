@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 enum VMState: String, CaseIterable, Sendable {
-    case idle,preparingRuntime,checkingJIT,creatingOverlay,startingVM,waitingForADB,connectingDisplay,installingAPK,resolvingActivity,launchingActivity,running,suspending,stopping,failed
-    var title:String { switch self {case .idle:"待机";case .preparingRuntime:"准备运行时";case .checkingJIT:"检查 JIT";case .creatingOverlay:"创建游戏磁盘";case .startingVM:"启动 Android";case .waitingForADB:"等待 Android 服务";case .connectingDisplay:"连接显示通道";case .installingAPK:"安装 APK";case .resolvingActivity:"查找启动入口";case .launchingActivity:"启动游戏";case .running:"运行中";case .suspending:"暂停中";case .stopping:"正在停止";case .failed:"启动失败"} }
+    case idle,preparingRuntime,checkingJIT,creatingOverlay,startingVM,connectingControl,waitingForADB,connectingDisplay,installingAPK,resolvingActivity,launchingActivity,running,suspending,stopping,failed
+    var title:String { switch self {case .idle:"待机";case .preparingRuntime:"准备运行时";case .checkingJIT:"检查 JIT";case .creatingOverlay:"创建游戏磁盘";case .startingVM:"启动 Android";case .connectingControl:"连接虚拟机控制通道";case .waitingForADB:"等待 Android 服务";case .connectingDisplay:"连接显示通道";case .installingAPK:"安装 APK";case .resolvingActivity:"查找启动入口";case .launchingActivity:"启动游戏";case .running:"运行中";case .suspending:"暂停中";case .stopping:"正在停止";case .failed:"启动失败"} }
 }
 
 @MainActor @Observable
@@ -38,10 +38,11 @@ final class AndroidVMController {
             try await transition(.checkingJIT,timeout:.seconds(3)){if self.runtimeManager.jitStatus == .unknown{self.runtimeManager.probeJIT()}}
             try await transition(.creatingOverlay,timeout:.seconds(20)){try await self.runtimeManager.prepareOverlay(gameID:game.id)}
             try await transition(.startingVM,timeout:.seconds(15)){try self.startQEMU(game)}
-            try await transition(.waitingForADB,timeout:.seconds(120)){try await self.connectServices()}
+            try await transition(.connectingControl,timeout:.seconds(20)){try await self.connectQMP()}
             try await transition(.connectingDisplay,timeout:.seconds(30)){try await self.attachDisplay()}
+            try await transition(.waitingForADB,timeout:.seconds(300)){try await self.connectADB()}
             if let package = game.packageName {
-                try await transition(.installingAPK,timeout:.seconds(180)){try await self.adb.install(apkURL:URL(fileURLWithPath:game.originalFilePath))}
+                try await transition(.installingAPK,timeout:.seconds(900)){try await self.adb.install(apkURL:URL(fileURLWithPath:game.originalFilePath))}
                 var activity = ""
                 try await transition(.resolvingActivity,timeout:.seconds(20)){activity=try await self.adb.resolveLauncherActivity(packageName:package)}
                 try await transition(.launchingActivity,timeout:.seconds(20)){try await self.adb.launch(packageName:package,activity:activity)}
@@ -132,11 +133,21 @@ final class AndroidVMController {
         }
     }
 
-    private func connectServices() async throws {
-        var lastError: Error = DroidBoxError.adbUnavailable
-        for _ in 0..<60 {
+    private func connectQMP() async throws {
+        var lastError: Error = DroidBoxError.vmBootTimeout
+        for _ in 0..<40 {
             try Task.checkCancellation()
-            do { try await qmp.connect(port:qmpPort);try await adb.connect(port:adbPort);return }
+            do { try await qmp.connect(port:qmpPort); return }
+            catch { lastError=error;try await Task.sleep(for:.milliseconds(500)) }
+        }
+        throw lastError
+    }
+
+    private func connectADB() async throws {
+        var lastError: Error = DroidBoxError.adbUnavailable
+        for _ in 0..<150 {
+            try Task.checkCancellation()
+            do { try await adb.connect(port:adbPort);return }
             catch { lastError=error;try await Task.sleep(for:.seconds(2)) }
         }
         throw lastError

@@ -60,3 +60,11 @@ chmod +x scripts/*.sh
 ## 1.2.8
 
 游戏库中的游戏现在可通过长按菜单修改显示名称。Java ME 播放器增加设备温控与低电量模式诊断，并减少重复的画布缩放调用、空闲修改器轮询和修改器刷新频率，以降低不必要的 CPU 占用与发热。
+
+## Android Runtime 第二阶段
+
+Full Runtime IPA 现在从固定 SHA-256 的 UTM 5.0.3 官方发行包提取并内置
+`qemu-x86_64-softmmu` 及其依赖。运行时页面可以在线下载或手动导入持久化的
+Android-x86 9.0-r2 Runtime，QEMU 启动后通过本机 QMP、ADB 和 VNC/RFB 完成 APK
+安装、入口解析、启动、显示与触控。Android VM 需要 JIT 才能达到可用速度，且 APK
+必须包含 x86_64 原生库或为纯 Java 应用。
