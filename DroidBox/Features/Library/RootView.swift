@@ -13,15 +13,13 @@ struct RootView: View {
             SettingsView().tabItem{Label("设置",systemImage:"gearshape")}.tag(3)
         }
         .sheet(item:$environment.presentedPlayer){game in PlayerContainerView(game:game)}
-        .sheet(
-            isPresented: Binding(
-                get: { environment.importer.isImporting },
-                set: { _ in }
-            )
-        ) {
-            ImportProgressSheet()
-                .environment(environment)
-                .interactiveDismissDisabled()
+        .safeAreaInset(edge: .bottom) {
+            if environment.importer.isImporting {
+                ImportProgressView()
+                    .environment(environment)
+                    .padding(.horizontal)
+                    .padding(.bottom, 4)
+            }
         }
         .alert(
             item: Binding(
@@ -76,10 +74,10 @@ private struct EmptyLibraryView: View {
         ContentUnavailableView {
             Label("还没有游戏", systemImage: "shippingbox")
         } description: {
-            Text("可以直接选择 APK/ZIP，也可以把文件放入 DroidBox/Import 后扫描。")
+            Text("可以直接选择 APK/ZIP/JAR，也可以把文件放入 DroidBox/Import 后扫描。")
         } actions: {
             VStack(spacing: 10) {
-                Button("选择 APK 或 ZIP", systemImage: "doc.badge.plus") {
+                Button("选择 APK、ZIP 或 JAR", systemImage: "doc.badge.plus") {
                     DroidBoxFrontendHost.shared.presentGameImporter()
                 }
                 .buttonStyle(.borderedProminent)
@@ -97,7 +95,7 @@ private struct EmptyLibraryView: View {
 struct GameArtwork:View{
     let game:GameRecord
     var body:some View{ZStack{Rectangle().fill(Color(uiColor:.secondarySystemBackground));if let path=game.iconPath,let image=UIImage(contentsOfFile:path){Image(uiImage:image).resizable().scaledToFit().padding(16)}else{Image(systemName:icon).font(.system(size:44,weight:.light)).foregroundStyle(.tint)}}.aspectRatio(4/3,contentMode:.fit).clipShape(.rect(cornerRadius:6))}
-    private var icon:String{switch game.engine{case .rpgMakerMV,.rpgMakerMZ:"globe";case .renpy7,.renpy8,.kirikiri:"text.book.closed";default:"gamecontroller"}}
+    private var icon:String{switch game.engine{case .rpgMakerMV,.rpgMakerMZ:"globe";case .renpy7,.renpy8:"text.book.closed";case .j2me:"cup.and.heat.waves";default:"gamecontroller"}}
 }
 private struct GameTile:View{
     let game:GameRecord

@@ -24,17 +24,12 @@ struct RuntimeSettingsView: View {
                 }
                 Section("本机游戏引擎") {
                     Label("Ren'Py APK 直接使用内置 Ren'Py 8.4.1，不需要 Android Runtime。", systemImage: "checkmark.circle")
-                    Label(
-                        Bundle.main.url(forResource: "Kirikiroid2-1.3.9", withExtension: "ipa", subdirectory: "EmbeddedRuntimes") == nil
-                            ? "KiriKiri 配套引擎包未嵌入"
-                            : "Kirikiroid2 1.3.9 配套引擎包已嵌入",
-                        systemImage: "shippingbox"
-                    )
+                    Label("Java ME 游戏直接使用内置 J2ME 引擎，不需要 JIT。", systemImage: "cup.and.heat.waves")
                 }
                 Section("JIT") {
                     LabeledContent("状态", value: environment.diagnostics.jitText)
                     Button("重新检测", systemImage: "arrow.clockwise") { environment.runtimeManager.probeJIT() }
-                    Text("检测会区分 MAP_JIT 权限和 StikDebug 调试器权限。只有具备 MAP_JIT，或进程确实处于 CS_DEBUGGED/P_TRACED 状态且能创建可执行内存时，才会显示可用。Ren'Py 与 KiriKiri 数据导入不依赖 JIT。")
+                    Text("检测会区分 MAP_JIT 权限和 StikDebug 调试器权限。只有具备 MAP_JIT，或进程确实处于 CS_DEBUGGED/P_TRACED 状态且能创建可执行内存时，才会显示可用。Ren'Py 与 Java ME 不依赖 JIT。")
                         .font(.footnote).foregroundStyle(.secondary)
                     if environment.runtimeManager.jitStatus != .available {
                         Text("Android VM 可尝试无 JIT 模式,但速度会非常慢。快速运行路径不受影响。")
@@ -47,6 +42,14 @@ struct RuntimeSettingsView: View {
                         value: DroidBoxFrontendHost.shared.renPyRuntimeAvailable
                             ? "\(RenPyPackageProfile.bundledRuntimeVersion) 已嵌入"
                             : "未嵌入"
+                    )
+                    LabeledContent(
+                        "J2ME",
+                        value: Bundle.main.url(
+                            forResource: "index",
+                            withExtension: "html",
+                            subdirectory: "j2mejs"
+                        ) == nil ? "未嵌入" : "已嵌入"
                     )
                     LabeledContent("UTM/QEMU", value: DBQEMUBridge.coreBundled ? "已嵌入" : "未嵌入")
                     LabeledContent("显示通道", value: "VNC/RFB 3.8 (Raw, CopyRect)")

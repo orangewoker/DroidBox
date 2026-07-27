@@ -1,0 +1,1453 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden; position: fixed;
+      touch-action: none; background: #000;
+    }
+
+    /* Canvas fills entire viewport */
+    #display-container, #display, #drawer, #main {
+      width: 100%; height: 100%;
+      position: absolute; top: 0; left: 0;
+      background: #000;
+    }
+    #canvas {
+      display: block;
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: #000;
+      image-rendering: pixelated;
+    }
+
+    /* Engine-required elements: hidden but present in DOM */
+    .engine-hidden { display: none !important; }
+
+    /* Game dialogs (lcdui-alert, textbox etc.) need to show when game triggers them */
+    form[role="dialog"][data-type="confirm"] {
+      background: #2d2d2d; overflow: hidden; position: absolute;
+      z-index: 102; top: 0; left: 0; right: 0; bottom: 0;
+      padding-bottom: 7rem; font-size: 0; color: #fff; text-align: left;
+    }
+    form[role="dialog"][data-type="confirm"] > section {
+      font-weight: 300; font-size: 2.2rem; color: #FAFAFA;
+      padding: 0 1.5rem; width: 100%; display: inline-block;
+      overflow-y: scroll; max-height: 100%; vertical-align: middle; white-space: normal;
+    }
+    form[role="dialog"][data-type="confirm"] h1 {
+      font-weight: normal; font-size: 1.6rem; line-height: 1.5em;
+      color: #fff; margin: 0; padding: 1rem 1.5rem 0;
+    }
+    form[role="dialog"][data-type="confirm"] menu {
+      white-space: nowrap; margin: 0; padding: 1.5rem; background: #4d4d4d;
+      display: block; overflow: hidden; position: absolute; left: 0; right: 0; bottom: 0;
+    }
+    form[role="dialog"][data-type="confirm"] menu button {
+      font-family: sans-serif; font-style: italic; width: calc((100% - 1rem) / 2);
+      height: 4rem; margin: 0; padding: 0 1.2rem; display: inline-block;
+      vertical-align: middle; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+      background: #d8d8d8; border: none; border-radius: 2rem;
+      font-weight: normal; font-size: 1.6rem; line-height: 4rem;
+      color: #333; text-align: center; outline: none;
+    }
+    form[role="dialog"][data-type="confirm"] menu button.recommend { background-color: #00caf2; color: #fff; }
+    form[role="dialog"][data-type="confirm"] menu button:last-child { margin-left: 1rem; }
+    form[role="dialog"][data-type="confirm"] p {
+      word-wrap: break-word; margin: 1rem 0 0; padding: 1rem 1.5rem;
+      border-top: 0.1rem solid #686868; line-height: 3rem;
+    }
+  </style>
+
+  <script>
+    document.addEventListener('touchmove', function(e) {
+      var target = e.target;
+      while (target && target !== document.body) {
+        if (target.scrollHeight > target.clientHeight ||
+            target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' ||
+            target.contentEditable === 'true' || target.classList.contains('text-editor') ||
+            target.closest('form[role="dialog"]')) return;
+        target = target.parentElement;
+      }
+      e.preventDefault();
+    }, { passive: false });
+    var lastTouchEnd = 0;
+    document.addEventListener('touchend', function(e) {
+      var now = Date.now();
+      if (now - lastTouchEnd <= 300) e.preventDefault();
+      lastTouchEnd = now;
+    }, false);
+  </script>
+
+  <script type="text/javascript" src="./js/rawinflate.js" defer></script>
+  <script src="./js/encoding.js"></script>
+  <script src="./js/webaudio-tinysynth.min.js" type="text/javascript"></script>
+  <script src="./js/BenzAMRRecorder.min.js" type="text/javascript"></script>
+  <script src="./js/midiplayer.js" type="text/javascript" defer></script>
+  <script type="text/javascript" src="bld/native.js" defer></script>
+  <script type="text/javascript" src="config/default.js" defer></script>
+  <script type="text/javascript" src="config/build.js" defer></script>
+  <script type="text/javascript" src="config/urlparams.js" defer></script>
+  <script type="text/javascript" src="config/ios-override.js" defer></script>
+  <script type="text/javascript" src="bld/j2me.js" defer></script>
+  <script type="text/javascript" src="bld/main-all.js" defer></script>
+  <script type="text/javascript" src="keymap.js"></script>
+  <script type="text/javascript" src="./js/jszip.min.js"></script>
+
+  <!-- Network bridge for J2meJS evalNative - must be before main-all.js runs -->
+  <script>
+  (function() {
+    'use strict';
+
+    // Callback registries for evalNative commands
+    window.__j2meNetworkCallbacks = {
+      request: null
+    };
+    window.__j2meSocketCallbacks = {};
+
+    // Unique ID counter for request tracking
+    var __j2meRequestId = 0;
+
+    /**
+     * evalNative - bridge between J2meJS engine and native network APIs
+     * Called by main-all.js when J2ME code makes HTTP or socket requests
+     *
+     * @param {string} command - "request" | "connectSocket" | "onSocket" | "invokeSocket"
+     * @param {object} data - command parameters
+     * @param {function} [callback] - optional callback for async responses
+     */
+    window.evalNative = function(command, data, callback) {
+      switch (command) {
+        case "request": {
+          // HTTP request - send to Swift via postMessage
+          window.webkit.messageHandlers.j2me.postMessage({
+            type: "evalNative",
+            command: "request",
+            data: data,
+            hasCallback: typeof callback === "function"
+          });
+          // Store callback for Swift to invoke later
+          if (typeof callback === "function") {
+            window.__j2meNetworkCallbacks.request = callback;
+          }
+          break;
+        }
+
+        case "connectSocket": {
+          // TCP socket connect - send to Swift with a unique socket ID
+          var socketId = "socket_" + __j2meRequestId++;
+          // Include socketId in the data sent to Swift
+          var sendData = Object.assign({}, data, { __socketId: socketId });
+          window.webkit.messageHandlers.j2me.postMessage({
+            type: "evalNative",
+            command: "connectSocket",
+            data: sendData,
+            hasCallback: typeof callback === "function"
+          });
+          // Store callback keyed by socketId
+          if (typeof callback === "function") {
+            window.__j2meSocketCallbacks[socketId] = callback;
+          }
+          // Return socket ID to caller (sync return value)
+          // Note: actual connection is async, caller uses onSocket to wait for connect event
+          return socketId;
+        }
+
+        case "onSocket": {
+          // Register socket event callback
+          var id = data.id;
+          if (typeof callback === "function") {
+            window.__j2meSocketCallbacks[id] = callback;
+          }
+          // Notify Swift to set up event forwarding
+          window.webkit.messageHandlers.j2me.postMessage({
+            type: "evalNative",
+            command: "onSocket",
+            data: data,
+            hasCallback: typeof callback === "function"
+          });
+          break;
+        }
+
+        case "invokeSocket": {
+          // Socket write/destroy - send to Swift (no callback expected)
+          window.webkit.messageHandlers.j2me.postMessage({
+            type: "evalNative",
+            command: "invokeSocket",
+            data: data,
+            hasCallback: false
+          });
+          break;
+        }
+
+        default:
+          console.warn("evalNative: unknown command", command);
+      }
+    };
+
+    console.log("[iOS] evalNative network bridge initialized");
+  })();
+  </script>
+</head>
+
+<body>
+  <!-- Only visible element: canvas -->
+  <div id="display-container">
+    <div id="display">
+      <section id="sidebar" data-type="sidebar" class="engine-hidden"><header><h1>Menu</h1></header><nav><ul></ul></nav></section>
+      <section id="drawer" role="region">
+        <header class="engine-hidden">
+          <a href="#"><span class="icon icon-menu"></span></a>
+          <a id="header-drawer-button" href="#drawer"><span class="icon icon-menu"></span></a>
+          <menu id="header-ok-button" type="toolbar"><button>OK</button></menu>
+          <h1 id="display_title"></h1>
+        </header>
+        <div id="main" role="main">
+          <canvas id="canvas"></canvas>
+          <div id="main2" class="engine-hidden">
+            <input id="password-editor" class="text-editor" type="password">
+            <input id="tel-editor" class="text-editor" type="tel">
+            <input id="number-editor" class="text-editor" type="number">
+            <input id="email-editor" class="text-editor" type="email">
+            <input id="url-editor" class="text-editor" type="url">
+            <div id="textarea-editor" class="text-editor" contenteditable="true"></div>
+            <div id="hidden-textarea-editor" class="text-editor"></div>
+            <button id="back-button">Back</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="download-screen" class="screen engine-hidden"></div>
+      <div id="splash-screen" class="screen engine-hidden"></div>
+      <div id="exit-screen" class="screen engine-hidden"></div>
+
+      <form role="dialog" data-type="confirm" class="lcdui-alert" id="lcdui-alert" style="display:none">
+        <section><h1 class="title"></h1><p class="text"></p><p style="border-top:0"><progress style="display:none"></progress></p></section>
+        <menu><button class="button0" style="display:none"></button><button class="button1" style="display:none"></button></menu>
+      </form>
+      <form role="dialog" data-type="confirm" class="lcdui-textbox" id="lcdui-textbox" style="display:none">
+        <section><h1 class="title"></h1><p><input type="text" class="textbox-input" style="width:100%;padding:5px;"></p></section>
+        <menu><button class="button0" style="display:none"></button><button class="button1" style="display:none"></button></menu>
+      </form>
+      <form role="dialog" data-type="confirm" class="sms-listener-prompt" id="sms-listener-prompt" style="display:none">
+        <section><h1>SMS</h1><p class="verificationText"></p><input type="text"><p class="timeLeft"></p><progress class="timeLeftBar" value="0" max="100"></progress></section>
+        <menu><button class="cancel">Cancel</button><button class="recommend">Done</button></menu>
+      </form>
+      <form role="dialog" data-type="confirm" class="nokia-fileui-prompt" id="nokia-fileui-prompt" style="display:none">
+        <section><h1>Select a file</h1><p><input type="file" name="nokia-fileui-file"></p></section>
+        <menu><button class="cancel">Cancel</button><button class="recommend">Done</button></menu>
+      </form>
+    </div>
+  </div>
+
+  <div id="keypad" class="gamepad-0 engine-hidden"><div id="joypad"></div><div id="numpad"></div></div>
+  <input id="File" type="file" class="engine-hidden">
+
+  <script>
+  (function() {
+    'use strict';
+
+    // 'stretch' = fill entire viewport (may distort)
+    // 'fit'     = keep aspect ratio, centered with black bars
+    var _scaleMode = 'stretch';
+    var _lastApplied = '';
+
+    function applyCanvasScale() {
+      var canvas = document.getElementById('canvas');
+      if (!canvas) return;
+
+      var vw = window.innerWidth, vh = window.innerHeight;
+      // When rotated 90°, the canvas logical W/H are swapped relative to the viewport
+      var cw = _rotation ? (canvas.height || 320) : (canvas.width  || 240);
+      var ch = _rotation ? (canvas.width  || 240) : (canvas.height || 320);
+      var w, h, top, left, tf;
+
+      if (_scaleMode === 'fit' && cw > 0 && ch > 0) {
+        var scale = Math.min(vw / cw, vh / ch);
+        var fw = Math.floor(cw * scale);
+        var fh = Math.floor(ch * scale);
+        // When rotated -90deg, the CSS element's width/height map to the
+        // viewport's height/width respectively. Swap so the rotated output
+        // fills the correctly-scaled region.
+        w = (_rotation ? fh : fw) + 'px';
+        h = (_rotation ? fw : fh) + 'px';
+        top = '50%'; left = '50%';
+        tf = _rotation
+          ? 'translate(-50%,-50%) rotate(-90deg)'
+          : 'translate(-50%,-50%)';
+      } else {
+        // Stretch: fill the entire viewport.
+        // When rotated -90deg, swap w/h so the rotated canvas covers the screen.
+        w = (_rotation ? vh : vw) + 'px';
+        h = (_rotation ? vw : vh) + 'px';
+        top = _rotation ? '50%' : '0px';
+        left = _rotation ? '50%' : '0px';
+        tf = _rotation ? 'translate(-50%,-50%) rotate(-90deg)' : '';
+      }
+
+      if (canvas.style.width !== w || canvas.style.height !== h ||
+          canvas.style.top !== top || canvas.style.left !== left) {
+        canvas.style.cssText = 'display:block;position:absolute;background:#000;image-rendering:pixelated;'
+          + 'width:' + w + ' !important;height:' + h + ' !important;'
+          + 'top:' + top + ';left:' + left + ';'
+          + (tf ? 'transform:' + tf + ';' : '');
+      }
+      // Always dispatch canvasresize so the engine re-reads getBoundingClientRect().
+      // This is critical when the WKWebView frame changes: the canvas CSS may stay
+      // the same string value (e.g. '100vw') but its actual pixel rect has shifted.
+      // Without this, the engine's cached canvasRect stays stale and touch coordinates
+      // are mapped against the old position/size.
+      try { canvas.dispatchEvent(new Event('canvasresize')); } catch(e) {}
+    }
+
+    var _applying = false;
+    var _applyTimer = null;
+    function safeApply() {
+      if (_applying) return;
+      _applying = true;
+      applyCanvasScale();
+      _applying = false;
+      // WKWebView may animate window size changes; schedule additional
+      // applications to catch the final size after the animation settles.
+      clearTimeout(_applyTimer);
+      _applyTimer = setTimeout(function() {
+        _applying = true;
+        applyCanvasScale();
+        _applying = false;
+      }, 350);
+    }
+
+    function resumeAllAudio() {
+      var contexts = [window.AA, window._audioContext, window.audioContext];
+      try {
+        if (typeof MIDP !== 'undefined' && MIDP.playerContainer) {
+          contexts.push(MIDP.playerContainer.audioCtx);
+          if (MIDP.playerContainer.audio && MIDP.playerContainer.audio.synth) {
+            contexts.push(MIDP.playerContainer.audio.synth.context);
+          }
+        }
+      } catch(e) {}
+      for (var i = 0; i < contexts.length; i++) {
+        try {
+          if (contexts[i] && contexts[i].state === 'suspended') {
+            contexts[i].resume();
+          }
+        } catch(e) {}
+      }
+    }
+
+    // Audio unlock strategy:
+    // 1. Monkey-patch AudioContext to auto-resume + play silent buffer on creation
+    // 2. On page load, create a hidden <audio> element that auto-plays silence,
+    //    then connect it to any AudioContext via createMediaElementSource to force
+    //    the context into 'running' state.
+    // 3. Periodically poll and resume all AudioContexts until they are running.
+    // 4. Fallback: resume on user gesture for strict environments.
+    (function unlockAudio() {
+      var OrigAC = window.AudioContext || window.webkitAudioContext;
+      if (!OrigAC) return;
+
+      var allContexts = [];
+
+      function tryUnlock(ctx) {
+        if (!ctx) return;
+        // Play a 1-sample silent buffer
+        try {
+          var buf = ctx.createBuffer(1, 1, 22050);
+          var src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(ctx.destination);
+          src.start(0);
+        } catch(e) {}
+        if (ctx.state === 'suspended') ctx.resume().catch(function(){});
+      }
+
+      // Track all created AudioContexts
+      var PatchedAC = function() {
+        var ctx = new OrigAC();
+        allContexts.push(ctx);
+        tryUnlock(ctx);
+        return ctx;
+      };
+      PatchedAC.prototype = OrigAC.prototype;
+      window.AudioContext = PatchedAC;
+      if (window.webkitAudioContext) window.webkitAudioContext = PatchedAC;
+
+      // Aggressively poll: resume all known AudioContexts every 500ms for 30s
+      var pollCount = 0;
+      var pollTimer = setInterval(function() {
+        pollCount++;
+        var allRunning = true;
+        // Collect known contexts
+        var ctxs = allContexts.slice();
+        if (window.AA && ctxs.indexOf(window.AA) === -1) ctxs.push(window.AA);
+        try {
+          if (typeof MIDP !== 'undefined' && MIDP.playerContainer && MIDP.playerContainer.audioCtx) {
+            if (ctxs.indexOf(MIDP.playerContainer.audioCtx) === -1) ctxs.push(MIDP.playerContainer.audioCtx);
+          }
+        } catch(e) {}
+
+        for (var i = 0; i < ctxs.length; i++) {
+          if (ctxs[i] && ctxs[i].state === 'suspended') {
+            allRunning = false;
+            tryUnlock(ctxs[i]);
+          }
+        }
+        if ((allRunning && ctxs.length > 0) || pollCount > 60) {
+          clearInterval(pollTimer);
+        }
+      }, 500);
+
+      // On user gesture: resume everything
+      function onGesture() {
+        var ctxs = allContexts.slice();
+        if (window.AA && ctxs.indexOf(window.AA) === -1) ctxs.push(window.AA);
+        try {
+          if (typeof MIDP !== 'undefined' && MIDP.playerContainer) {
+            if (MIDP.playerContainer.audioCtx && ctxs.indexOf(MIDP.playerContainer.audioCtx) === -1)
+              ctxs.push(MIDP.playerContainer.audioCtx);
+            if (MIDP.playerContainer.audio && MIDP.playerContainer.audio.synth &&
+                MIDP.playerContainer.audio.synth.context)
+              ctxs.push(MIDP.playerContainer.audio.synth.context);
+          }
+        } catch(e) {}
+        for (var i = 0; i < ctxs.length; i++) {
+          tryUnlock(ctxs[i]);
+        }
+      }
+      ['touchstart','touchend','click','mousedown','keydown','pointerdown'].forEach(function(evt) {
+        document.addEventListener(evt, onGesture, { capture: true });
+      });
+    })();
+
+    window.addEventListener('load', function() {
+      safeApply();
+      var canvas = document.getElementById('canvas');
+      if (canvas) {
+        var mo = new MutationObserver(function() { safeApply(); });
+        mo.observe(canvas, { attributes: true, attributeFilter: ['style'] });
+      }
+      // Hook showExitScreen: notify Swift instead of redirecting to index.html
+      var hookInterval = setInterval(function() {
+        if (typeof showExitScreen === 'function') {
+          window.showExitScreen = function() {
+            document.getElementById('exit-screen').style.display = 'block';
+            if (typeof myflushAll === 'function') myflushAll();
+            try {
+              window.webkit.messageHandlers.j2me.postMessage({ type: 'exit' });
+            } catch(e) {}
+          };
+          clearInterval(hookInterval);
+        }
+      }, 200);
+    });
+    window.addEventListener('resize', safeApply);
+
+    function notifyReady() {
+      try {
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.j2me) {
+          window.webkit.messageHandlers.j2me.postMessage({ type: 'ready' });
+        }
+      } catch(e) {}
+    }
+
+    function _waitForEngineReady(callback) {
+      if (typeof CLASSES !== 'undefined' && CLASSES.java_lang_Object &&
+          typeof JARStore !== 'undefined' && typeof MIDP !== 'undefined' &&
+          typeof jvm !== 'undefined') {
+        _hookScheduler();
+        _hookSaveNotification();
+        _hookAutoContinueText();
+        _hookSpeedControl();
+        callback();
+        return;
+      }
+      setTimeout(function() { _waitForEngineReady(callback); }, 100);
+    }
+
+    function _openJar(bytes, fileName, screenSize, rotation) {
+      if (!(bytes instanceof Uint8Array)) {
+        if (bytes instanceof ArrayBuffer) bytes = new Uint8Array(bytes);
+        else { console.error('openJar: invalid input'); return; }
+      }
+
+      _waitForEngineReady(function() {
+        JARStore.addBuiltIn(fileName, bytes.buffer, false);
+        config.jars = fileName;
+
+        // 若 Swift 传入了目标尺寸则在 JVM 启动前应用，否则保持默认（240x320）
+        if (screenSize) {
+          var parts = String(screenSize).trim().split(/[x,*]/);
+          if (parts.length === 2) {
+            var w = parseInt(parts[0], 10), h = parseInt(parts[1], 10);
+            if (w > 0 && h > 0) _setScreenSize(w, h);
+          }
+        }
+
+        // 旋转：交换宽高并设置 CSS transform
+        if (rotation) {
+          _setRotation(true);
+        }
+
+        if (typeof hideDownloadScreen === 'function') hideDownloadScreen();
+
+        var jvmInstance = typeof jvm !== 'undefined' ? jvm : new JVM();
+        setTimeout(function() {
+          jvmInstance.startIsolate0(config.main, config.args);
+        }, 500);
+      });
+    }
+
+    function _openJarFromURL(url, fileName) {
+      fetch(url).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+      }).then(function(buf) {
+        _openJar(new Uint8Array(buf), fileName || 'game.jar');
+      }).catch(function(e) { console.error('Failed to fetch JAR:', e); });
+    }
+
+    function _setScreenSize(w, h) {
+      config.canvasSize = 'size-' + w + 'x' + h;
+      lcdWidth = w; lcdHeight = h;
+      var canvas = document.getElementById('canvas');
+      if (canvas) {
+        canvas.width = w; canvas.height = h;
+        try { canvas.dispatchEvent(new Event('canvasresize')); } catch(e) {}
+      }
+      applyCanvasScale();
+    }
+
+    var _rotation = false;
+
+    function _setRotation(enabled) {
+      _rotation = !!enabled;
+      // The engine's getCanvasRotation() reads the CSS class on #main to detect
+      // rotation and apply the correct inverse transform to touch coordinates.
+      // We must keep this class in sync with our CSS transform so that
+      // getEventPoint() remaps touches correctly when rotation is active.
+      var main = document.getElementById('main');
+      if (main) {
+        if (_rotation) {
+          main.classList.add('rotate-left');    // signals -90deg to getCanvasRotation()
+          main.classList.remove('rotate-right');
+        } else {
+          main.classList.remove('rotate-left');
+          main.classList.remove('rotate-right');
+        }
+      }
+      applyCanvasScale();
+    }
+
+    var _muted = false;
+    function _applyAudioMute(mute) {
+      try {
+        var contexts = [window.AA, window._audioContext, window.audioContext];
+        for (var i = 0; i < contexts.length; i++) {
+          var ctx = contexts[i];
+          if (ctx && typeof ctx.suspend === 'function') {
+            mute ? ctx.suspend() : ctx.resume();
+          }
+        }
+      } catch(e) {}
+    }
+
+    function _getSaveData() {
+      if (typeof SaveManager === 'undefined' || typeof JSZip === 'undefined') return Promise.resolve(null);
+      // RMS files may still be dirty in an open RecordStore. exportStore only
+      // syncs the Store map, so flush open file buffers into that map first.
+      if (typeof myflushAll === 'function') myflushAll();
+      return new Promise(function(resolve) {
+        SaveManager.exportSaveToZip(config.midletClassName || 'game', function(blob) {
+          if (!blob) { resolve(null); return; }
+          var r = new FileReader();
+          r.onload = function() {
+            resolve(btoa(new Uint8Array(r.result).reduce(function(d, b) { return d + String.fromCharCode(b); }, '')));
+          };
+          r.onerror = function() { resolve(null); };
+          r.readAsArrayBuffer(blob);
+        });
+      });
+    }
+
+    function _loadSaveData(b64) {
+      return new Promise(function(resolve, reject) {
+        if (typeof SaveManager === 'undefined' || typeof JSZip === 'undefined') {
+          reject(new Error('Save engine is not ready'));
+          return;
+        }
+        try {
+          var raw = atob(b64), bytes = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          SaveManager.importSaveFromZip(new Blob([bytes], { type: 'application/zip' }), function(ok) {
+            console.log('loadSaveData:', ok ? 'OK' : 'FAIL');
+            if (ok) resolve(true);
+            else reject(new Error('Failed to import RMS save data'));
+          });
+        } catch(e) {
+          console.error('loadSaveData error:', e);
+          reject(e);
+        }
+      });
+    }
+
+    // Save state format: JSON { version: 1, saveData: <zip_b64>, screen: <png_b64> }
+    // saveData = SaveManager ZIP (RecordStore contents)
+    // screen   = current canvas snapshot (preview only, not restored)
+    function _exportSaveState() {
+      if (typeof SaveManager === 'undefined' || typeof JSZip === 'undefined') {
+        try { window.webkit.messageHandlers.j2me.postMessage({ type: 'exportSaveStateComplete', success: false }); } catch(e) {}
+        return;
+      }
+
+      // Step 1: force flush all dirty data to IndexedDB
+      if (typeof myflushAll === 'function') myflushAll();
+
+      // Step 2: export RecordStore as ZIP
+      SaveManager.exportSaveToZip(config.midletClassName || 'game', function(zipBlob) {
+        var zipB64 = null;
+        function finish(zipB64) {
+          // Step 3: bundle and return
+          var bundle = JSON.stringify({ version: 1, saveData: zipB64 });
+          var bundleB64 = btoa(unescape(encodeURIComponent(bundle)));
+          try {
+            window.webkit.messageHandlers.j2me.postMessage({
+              type: 'exportSaveStateComplete', success: true, data: bundleB64
+            });
+          } catch(e) {}
+        }
+
+        if (!zipBlob) {
+          finish(null);
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function() {
+          var zip64 = btoa(new Uint8Array(reader.result).reduce(function(d, b) { return d + String.fromCharCode(b); }, ''));
+          finish(zip64);
+        };
+        reader.onerror = function() { finish(null); };
+        reader.readAsArrayBuffer(zipBlob);
+      });
+    }
+
+    function _importSaveState(b64) {
+      try {
+        if (typeof SaveManager === 'undefined' || typeof JSZip === 'undefined') throw new Error('Engine not ready');
+
+        // Decode the bundle
+        var bundle = JSON.parse(decodeURIComponent(escape(atob(b64))));
+        if (!bundle || bundle.version !== 1 || !bundle.saveData) throw new Error('Invalid save state format');
+
+        // Decode the ZIP and import RecordStore into IndexedDB
+        var zipRaw = atob(bundle.saveData);
+        var zipBytes = new Uint8Array(zipRaw.length);
+        for (var i = 0; i < zipRaw.length; i++) zipBytes[i] = zipRaw.charCodeAt(i);
+        var zipBlob = new Blob([zipBytes], { type: 'application/zip' });
+
+        SaveManager.importSaveFromZip(zipBlob, function() {
+          // RecordStore is now in IndexedDB — notify Swift to trigger reset+reload
+          try { window.webkit.messageHandlers.j2me.postMessage({ type: 'importSaveStateComplete', success: true }); } catch(e) {}
+        });
+      } catch(err) {
+        try { window.webkit.messageHandlers.j2me.postMessage({ type: 'importSaveStateComplete', success: false, error: err.message }); } catch(e) {}
+      }
+    }
+
+    var _keyCodeMap = {
+      'ArrowUp': -1, 'ArrowDown': -2, 'ArrowLeft': -3, 'ArrowRight': -4,
+      'Enter': -5, 'F1': -6, 'F2': -7,
+      'Digit0': 48, 'Digit1': 49, 'Digit2': 50, 'Digit3': 51,
+      'Digit4': 52, 'Digit5': 53, 'Digit6': 54, 'Digit7': 55,
+      'Digit8': 56, 'Digit9': 57, 'KeyE': 42, 'KeyR': 35
+    };
+
+    var _paused = false;
+    var _savedQueue = null;
+
+    function _pause() {
+      if (_paused) return;
+      _paused = true;
+      _applyAudioMute(true);
+      console.log('[iOS] Emulator paused');
+    }
+
+    function _resume() {
+      if (!_paused) return;
+      _paused = false;
+      _applyAudioMute(_muted);
+      // Kick the scheduler to process contexts that accumulated while paused
+      if (typeof J2ME !== 'undefined' && J2ME.Scheduler && _origProcessRunningQueue) {
+        _origProcessRunningQueue.call(J2ME.Scheduler, false);
+      }
+      console.log('[iOS] Emulator resumed');
+    }
+
+    // Intercept Scheduler.processRunningQueue to block when paused.
+    // When paused, enqueue still adds contexts to runningQueue (that logic is
+    // in Scheduler.enqueue before calling processRunningQueue), but we skip
+    // processing so threads accumulate. On resume we call origProcess once
+    // to drain the queue.
+    var _schedReady = false;
+    var _origProcessRunningQueue = null;
+    function _hookScheduler() {
+      if (_schedReady || typeof J2ME === 'undefined' || !J2ME.Scheduler) return;
+      _schedReady = true;
+      _origProcessRunningQueue = J2ME.Scheduler.processRunningQueue;
+      J2ME.Scheduler.processRunningQueue = function(directExecution) {
+        if (_paused) return;
+        _origProcessRunningQueue.call(J2ME.Scheduler, directExecution);
+      };
+    }
+
+    // Auto-save notification: when RecordStore data is synced to IndexedDB,
+    // debounce and export the save data as ZIP, then notify the Swift layer
+    // via the 'saveDataWritten' message so the native side can persist it.
+    var _saveNotifyTimer = null;
+    var _saveNotifyBusy = false;
+    var _SAVE_NOTIFY_DELAY = 3000; // debounce: wait 3s after last write
+
+    function _hookSaveNotification() {
+      if (typeof fs === 'undefined' || typeof fs.setOnRecordStoreSynced !== 'function') return;
+      fs.setOnRecordStoreSynced(function() {
+        // Debounce: reset the timer on every sync that touches RecordStore
+        if (_saveNotifyTimer) clearTimeout(_saveNotifyTimer);
+        _saveNotifyTimer = setTimeout(_doSaveNotify, _SAVE_NOTIFY_DELAY);
+      });
+      console.log('[iOS] Save auto-notification hooked');
+    }
+
+    function _doSaveNotify() {
+      _saveNotifyTimer = null;
+      if (_saveNotifyBusy) return; // skip if a previous export is still running
+      if (typeof SaveManager === 'undefined' || typeof JSZip === 'undefined') return;
+
+      _saveNotifyBusy = true;
+      if (typeof myflushAll === 'function') myflushAll();
+      SaveManager.exportSaveToZip(config.midletClassName || 'game', function(blob) {
+        if (!blob) {
+          _saveNotifyBusy = false;
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function() {
+          var b64 = btoa(new Uint8Array(reader.result).reduce(function(d, b) { return d + String.fromCharCode(b); }, ''));
+          try {
+            window.webkit.messageHandlers.j2me.postMessage({ type: 'saveDataWritten', data: b64 });
+          } catch(e) {}
+          _saveNotifyBusy = false;
+        };
+        reader.onerror = function() { _saveNotifyBusy = false; };
+        reader.readAsArrayBuffer(blob);
+      });
+    }
+
+    // ── Speed control ─────────────────────────────────────────────────────────
+    //
+    // Root cause analysis:
+    //
+    // 1. Thread.sleep hook may miss already-linked methods:
+    //    findNativeMethodImplementation() caches Native[key] into methodInfo.fn
+    //    at first call. Replacing Native[key] after linking has no effect.
+    //    Fix: also patch methodInfo.fn directly after JVM starts.
+    //
+    // 2. Most J2ME games are time-based, not frame-count-based:
+    //    They compute delta = System.currentTimeMillis() - lastTime and drive
+    //    all animation/physics through that delta. Reducing Thread.sleep alone
+    //    makes the loop iterate faster but each iteration sees a tiny real-time
+    //    delta, so the game appears unchanged visually.
+    //    Fix: maintain a virtual clock and override System.currentTimeMillis()
+    //    so the Java world perceives time advancing at speedMultiplier × rate.
+    //
+    // Combined approach:
+    //  • Virtual clock  → System.currentTimeMillis() returns scaled virtual time
+    //  • Thread.sleep   → delay divided by multiplier (loop iterates faster)
+    //  • Both together  → covers frame-based AND time-based game loops
+    //
+    var _speedMultiplier = 1.0;
+
+    // Virtual clock state.
+    // virtualNow() = _vcBase + (Date.now() - _vcRealBase) * _speedMultiplier
+    var _vcBase     = Date.now(); // accumulated virtual ms at last speed change
+    var _vcRealBase = Date.now(); // real ms at last speed change
+
+    function _virtualNow() {
+      return _vcBase + (Date.now() - _vcRealBase) * _speedMultiplier;
+    }
+
+    function _hookSpeedControl() {
+      if (typeof Native === 'undefined') return;
+
+      // ── System.currentTimeMillis ──────────────────────────────────────────
+      // Override unconditionally so time-based games always see virtual time.
+      Native["java/lang/System.currentTimeMillis.()J"] = function(addr) {
+        return J2ME.returnLongValue(Math.round(_virtualNow()));
+      };
+
+      // ── Thread.sleep ──────────────────────────────────────────────────────
+      // Replace the Native binding first (catches methods linked after this).
+      var sleepImpl = function(addr, delayL, delayH) {
+        var delay = J2ME.longToNumber(delayL, delayH);
+        var scaledDelay = Math.max(0, Math.round(delay / _speedMultiplier));
+        J2ME.asyncImpl(9 /* Kind.Void */, new Promise(function(resolve) {
+          window.setTimeout(resolve, scaledDelay);
+        }));
+      };
+      Native["java/lang/Thread.sleep.(J)V"] = sleepImpl;
+
+      // Also patch methodInfo.fn if Thread.sleep was already linked before us.
+      // This handles engines where Native[key] is cached at link time.
+      try {
+        var threadClass = J2ME.CLASSES.getClass('java/lang/Thread');
+        if (threadClass) {
+          var sleepInfo = threadClass.getMethodByNameString('sleep', '(J)V');
+          if (sleepInfo && sleepInfo.fn) {
+            sleepInfo.fn = sleepImpl;
+          }
+        }
+      } catch(e) {}
+
+      console.log('[iOS] Speed control hooked');
+    }
+
+    function _setSpeed(multiplier) {
+      multiplier = Math.max(0.25, Math.min(multiplier, 8));
+
+      // Commit accumulated virtual time before changing the multiplier so the
+      // clock stays continuous: no jump or gap at the transition point.
+      _vcBase     = _virtualNow();
+      _vcRealBase = Date.now();
+      _speedMultiplier = multiplier;
+
+      // Update audio playback rate for all active players.
+      if (typeof Media !== 'undefined' && Media.PlayerCache) {
+        Object.keys(Media.PlayerCache).forEach(function(id) {
+          var pc = Media.PlayerCache[id];
+          if (!pc) return;
+          // midimode 3: <audio> element
+          if (pc.audio && typeof pc.audio.playbackRate !== 'undefined') {
+            pc.audio.playbackRate = multiplier;
+          }
+          // midimode 4: AudioBufferSourceNode
+          if (pc.source && pc.source.playbackRate) {
+            pc.source.playbackRate.value = multiplier;
+          }
+        });
+      }
+
+      console.log('[iOS] Speed set to ' + multiplier + 'x');
+    }
+
+    // Runtime data modifier. It scans the J2meJS linear heap without pausing
+    // the MIDlet, supports successive comparisons, direct writes and frozen
+    // values. Addresses are byte offsets in ASM.buffer.
+    var _modifierSearch = null;
+    var _modifierFrozen = Object.create(null);
+    var _MODIFIER_MAX_MATCHES = 250000;
+    var _MODIFIER_VISIBLE_MATCHES = 250;
+
+    function _modifierType(type) {
+      switch (type) {
+        case 'i8':  return { view: ASM.HEAP8, bytes: 1, float: false };
+        case 'i16': return { view: ASM.HEAP16, bytes: 2, float: false };
+        case 'f32': return { view: ASM.HEAPF32, bytes: 4, float: true };
+        default:    return { view: ASM.HEAP32, bytes: 4, float: false, type: 'i32' };
+      }
+    }
+
+    function _modifierEqual(a, b, isFloat) {
+      if (!isFloat) return a === b;
+      var tolerance = Math.max(0.0001, Math.abs(b) * 0.00001);
+      return Math.abs(a - b) <= tolerance;
+    }
+
+    function _modifierPage() {
+      if (!_modifierSearch) return { total: 0, truncated: false, results: [] };
+      var info = _modifierType(_modifierSearch.type);
+      var count = Math.min(_modifierSearch.indices.length, _MODIFIER_VISIBLE_MATCHES);
+      var results = new Array(count);
+      for (var i = 0; i < count; i++) {
+        var index = _modifierSearch.indices[i];
+        var address = index * info.bytes;
+        var key = _modifierSearch.type + ':' + address;
+        results[i] = {
+          id: key,
+          address: address,
+          value: Number(info.view[index]),
+          frozen: Object.prototype.hasOwnProperty.call(_modifierFrozen, key)
+        };
+      }
+      return {
+        total: _modifierSearch.indices.length,
+        truncated: !!_modifierSearch.truncated,
+        results: results
+      };
+    }
+
+    // In-session VM snapshot used by the controls below the display. This is
+    // deliberately separate from RMS: RMS remains the game's own durable save,
+    // while this captures the Java heap, interpreter stacks/registers, runtime
+    // class state, monitors and the current framebuffer for immediate rollback.
+    var _quickSnapshot = null;
+
+    function _snapshotContext(ctx) {
+      var thread = ctx.nativeThread;
+      return {
+        ref: ctx,
+        priority: ctx.priority,
+        virtualRuntime: ctx.virtualRuntime,
+        paused: ctx.paused,
+        lockLevel: ctx.lockLevel,
+        threadAddress: ctx.threadAddress,
+        threadData: Array.prototype.slice.call(ctx.threadData),
+        thread: {
+          tp: thread.tp,
+          bp: thread.bp,
+          fp: thread.fp,
+          sp: thread.sp,
+          pc: thread.pc,
+          nativeFrameCount: thread.nativeFrameCount,
+          pendingNativeFrames: thread.pendingNativeFrames.slice(),
+          unwoundNativeFrames: thread.unwoundNativeFrames.slice()
+        }
+      };
+    }
+
+    function _snapshotRuntime(runtime) {
+      return {
+        ref: runtime,
+        priority: runtime.priority,
+        status: runtime.status,
+        threadCount: runtime.threadCount,
+        mainThread: runtime.mainThread,
+        nextHashCode: runtime._nextHashCode,
+        initialized: new Int8Array(runtime.initialized),
+        staticObjectAddresses: new Int32Array(runtime.staticObjectAddresses),
+        classObjectAddresses: new Int32Array(runtime.classObjectAddresses),
+        contexts: Array.from(runtime.allCtxs).map(_snapshotContext)
+      };
+    }
+
+    function _snapshotMonitors() {
+      var result = [];
+      if (typeof J2ME === 'undefined' || !J2ME.monitorMap) return result;
+      Object.keys(J2ME.monitorMap).forEach(function(key) {
+        var lock = J2ME.monitorMap[key];
+        result.push({
+          key: key,
+          ref: lock,
+          threadAddress: lock.threadAddress,
+          level: lock.level,
+          ready: lock.ready.slice(),
+          waiting: lock.waiting.slice()
+        });
+      });
+      return result;
+    }
+
+    function _captureHeapPages() {
+      var heap = ASM.HEAPU8;
+      var words = ASM.HEAPU32;
+      var pageSize = 65536;
+      var pages = [];
+      for (var offset = 0; offset < heap.length; offset += pageSize) {
+        var end = Math.min(offset + pageSize, heap.length);
+        var startWord = offset >>> 2;
+        var endWord = end >>> 2;
+        var nonzero = false;
+        for (var word = startWord; word < endWord; word++) {
+          if (words[word] !== 0) { nonzero = true; break; }
+        }
+        if (nonzero) pages.push({ offset: offset, data: heap.slice(offset, end) });
+      }
+      return { byteLength: heap.length, pages: pages };
+    }
+
+    function _captureQuickSnapshot() {
+      if (typeof ASM === 'undefined' || typeof J2ME === 'undefined' || !J2ME.Runtime) {
+        return Promise.resolve({ success: false, error: 'VM is not ready' });
+      }
+      var wasPaused = _paused;
+      if (!wasPaused) _pause();
+      return new Promise(function(resolve) {
+        setTimeout(function() {
+          try {
+            var canvas = document.getElementById('canvas');
+            var frame = null;
+            try {
+              var context = canvas && canvas.getContext('2d');
+              if (context) frame = context.getImageData(0, 0, canvas.width, canvas.height);
+            } catch(e) {}
+            _quickSnapshot = {
+              version: 1,
+              createdAt: Date.now(),
+              virtualNow: _virtualNow(),
+              heap: _captureHeapPages(),
+              runtimes: Array.from(J2ME.Runtime.all || []).map(_snapshotRuntime),
+              monitors: _snapshotMonitors(),
+              nativeMapEntries: J2ME.NativeMap ? Array.from(J2ME.NativeMap.entries()) : [],
+              modifierFrozen: Object.keys(_modifierFrozen || {}).map(function(key) {
+                var item = _modifierFrozen[key];
+                return { key: key, type: item.type, address: item.address, value: item.value };
+              }),
+              frame: frame
+            };
+            var storedBytes = _quickSnapshot.heap.pages.reduce(function(sum, page) {
+              return sum + page.data.byteLength;
+            }, 0);
+            if (!wasPaused) _resume();
+            resolve({ success: true, storedBytes: storedBytes, createdAt: _quickSnapshot.createdAt });
+          } catch(error) {
+            if (!wasPaused) _resume();
+            resolve({ success: false, error: String(error) });
+          }
+        }, 70);
+      });
+    }
+
+    function _restoreContext(state) {
+      var ctx = state.ref;
+      if (!ctx || !ctx.nativeThread) return;
+      ctx.priority = state.priority;
+      ctx.virtualRuntime = state.virtualRuntime;
+      ctx.paused = state.paused;
+      ctx.lockLevel = state.lockLevel;
+      ctx.threadAddress = state.threadAddress;
+      if (ctx.threadData && state.threadData) ctx.threadData.set(state.threadData);
+      var thread = ctx.nativeThread;
+      thread.tp = state.thread.tp;
+      thread.bp = state.thread.bp;
+      thread.fp = state.thread.fp;
+      thread.sp = state.thread.sp;
+      thread.pc = state.thread.pc;
+      thread.nativeFrameCount = state.thread.nativeFrameCount;
+      thread.pendingNativeFrames = state.thread.pendingNativeFrames.slice();
+      thread.unwoundNativeFrames = state.thread.unwoundNativeFrames.slice();
+    }
+
+    function _restoreRuntime(state) {
+      var runtime = state.ref;
+      if (!runtime) return;
+      runtime.priority = state.priority;
+      runtime.status = state.status;
+      runtime.threadCount = state.threadCount;
+      runtime.mainThread = state.mainThread;
+      runtime._nextHashCode = state.nextHashCode;
+      runtime.I = runtime.initialized = new Int8Array(state.initialized);
+      runtime.SA = runtime.staticObjectAddresses = new Int32Array(state.staticObjectAddresses);
+      runtime.CO = runtime.classObjectAddresses = new Int32Array(state.classObjectAddresses);
+      runtime.allCtxs = new Set(state.contexts.map(function(item) { return item.ref; }));
+      state.contexts.forEach(_restoreContext);
+    }
+
+    function _restoreMonitors(states) {
+      if (!J2ME.monitorMap) return;
+      Object.keys(J2ME.monitorMap).forEach(function(key) { delete J2ME.monitorMap[key]; });
+      states.forEach(function(state) {
+        var lock = state.ref;
+        lock.threadAddress = state.threadAddress;
+        lock.level = state.level;
+        lock.ready = state.ready.slice();
+        lock.waiting = state.waiting.slice();
+        J2ME.monitorMap[state.key] = lock;
+      });
+    }
+
+    function _restoreQuickSnapshot() {
+      if (!_quickSnapshot) return Promise.resolve({ success: false, error: 'No snapshot' });
+      var wasPaused = _paused;
+      if (!wasPaused) _pause();
+      return new Promise(function(resolve) {
+        setTimeout(function() {
+          try {
+            var heap = ASM.HEAPU8;
+            if (_quickSnapshot.heap.byteLength !== heap.length) throw new Error('Heap size changed');
+            heap.fill(0);
+            _quickSnapshot.heap.pages.forEach(function(page) { heap.set(page.data, page.offset); });
+            _quickSnapshot.runtimes.forEach(_restoreRuntime);
+            _restoreMonitors(_quickSnapshot.monitors);
+            if (J2ME.NativeMap) {
+              J2ME.NativeMap.clear();
+              (_quickSnapshot.nativeMapEntries || []).forEach(function(entry) {
+                J2ME.NativeMap.set(entry[0], entry[1]);
+              });
+            }
+            _modifierFrozen = Object.create(null);
+            (_quickSnapshot.modifierFrozen || []).forEach(function(item) {
+              _modifierFrozen[item.key] = { type: item.type, address: item.address, value: item.value };
+            });
+            _vcBase = _quickSnapshot.virtualNow;
+            _vcRealBase = Date.now();
+            try {
+              var canvas = document.getElementById('canvas');
+              var context = canvas && canvas.getContext('2d');
+              if (context && _quickSnapshot.frame) context.putImageData(_quickSnapshot.frame, 0, 0);
+            } catch(e) {}
+            if (!wasPaused) _resume();
+            resolve({ success: true, createdAt: _quickSnapshot.createdAt });
+          } catch(error) {
+            if (!wasPaused) _resume();
+            resolve({ success: false, error: String(error) });
+          }
+        }, 70);
+      });
+    }
+
+    function _modifierFirstScan(type, target) {
+      var info = _modifierType(type);
+      var indices = [], previous = [], truncated = false;
+      target = Number(target);
+      // Scan in chunks so a 128 MB J2ME heap cannot block rendering or key
+      // input for several seconds on an iPhone. callAsyncJavaScript awaits
+      // this Promise on the Swift side.
+      return new Promise(function(resolve, reject) {
+        var index = 0;
+        var chunkSize = 750000;
+        function scanChunk() {
+          try {
+            var end = Math.min(index + chunkSize, info.view.length);
+            for (; index < end; index++) {
+              var value = Number(info.view[index]);
+              if (!Number.isFinite(value)) continue;
+              if (_modifierEqual(value, target, info.float)) {
+                indices.push(index);
+                previous.push(value);
+                if (indices.length >= _MODIFIER_MAX_MATCHES) {
+                  truncated = true;
+                  break;
+                }
+              }
+            }
+            if (truncated || index >= info.view.length) {
+              _modifierSearch = { type: type, indices: indices, previous: previous, truncated: truncated };
+              resolve(_modifierPage());
+            } else {
+              setTimeout(scanChunk, 0);
+            }
+          } catch (error) {
+            reject(error);
+          }
+        }
+        scanChunk();
+      });
+    }
+
+    // Continue-game assistant. J2meJS cannot serialize a live JavaScript call
+    // stack, so a durable save is RMS rather than a raw VM snapshot. When the
+    // caller explicitly requests Continue/Load, watch Java ME drawString calls
+    // for a visible “continue/load progress” menu item and select it. No key is
+    // sent unless a matching item is actually drawn by the MIDlet.
+    var _autoContinueTextHooked = false;
+    var _autoContinueArmed = false;
+    var _autoContinueDeadline = 0;
+    var _autoContinueTimer = null;
+    var _autoContinueText = [];
+
+    function _captureAutoContinueText(text, x, y) {
+      if (!_autoContinueArmed || text === null || text === undefined) return;
+      text = String(text).replace(/^\s+|\s+$/g, '');
+      if (!text) return;
+      var now = Date.now();
+      _autoContinueText.push({ text: text, x: Number(x) || 0, y: Number(y) || 0, time: now });
+      if (_autoContinueText.length > 240) _autoContinueText.splice(0, _autoContinueText.length - 240);
+    }
+
+    function _hookAutoContinueText() {
+      if (_autoContinueTextHooked || typeof Native === 'undefined' || typeof J2ME === 'undefined') return;
+      _autoContinueTextHooked = true;
+
+      function wrap(key, decoder) {
+        var original = Native[key];
+        if (typeof original !== 'function') return;
+        Native[key] = function() {
+          try {
+            var item = decoder(arguments);
+            if (item) _captureAutoContinueText(item.text, item.x, item.y);
+          } catch(e) {}
+          return original.apply(this, arguments);
+        };
+      }
+
+      wrap('javax/microedition/lcdui/Graphics.drawString.(Ljava/lang/String;III)V', function(a) {
+        return { text: J2ME.fromStringAddr(a[1]), x: a[2], y: a[3] };
+      });
+      wrap('javax/microedition/lcdui/Graphics.drawSubstring.(Ljava/lang/String;IIIII)V', function(a) {
+        var value = J2ME.fromStringAddr(a[1]);
+        return { text: value && value.substr(a[2] | 0, a[3] | 0), x: a[4], y: a[5] };
+      });
+      wrap('javax/microedition/lcdui/Graphics.drawChars.([CIIIII)V', function(a) {
+        return { text: J2ME.fromJavaChars(a[1], a[2], a[3]), x: a[4], y: a[5] };
+      });
+    }
+
+    function _syntheticKey(code) {
+      if (typeof MIDP === 'undefined') return;
+      MIDP.sendKeyPress(code);
+      setTimeout(function() { try { MIDP.sendKeyRelease(code); } catch(e) {} }, 65);
+    }
+
+    function _finishAutoContinue(success, message) {
+      _autoContinueArmed = false;
+      if (_autoContinueTimer) clearInterval(_autoContinueTimer);
+      _autoContinueTimer = null;
+      try {
+        window.webkit.messageHandlers.j2me.postMessage({
+          type: 'autoContinueComplete', success: !!success, message: message || ''
+        });
+      } catch(e) {}
+    }
+
+    function _setMute(mute) {
+      _muted = !!mute;
+      _applyAudioMute(_muted);
+    }
+
+    function _tryAutoContinue() {
+      if (!_autoContinueArmed) return;
+      var now = Date.now();
+      if (now >= _autoContinueDeadline) {
+        _finishAutoContinue(false, '未检测到读取进度菜单');
+        return;
+      }
+
+      var recent = _autoContinueText.filter(function(item) { return now - item.time < 1800; });
+      var pattern = /(读取|载入|加载).{0,2}(进度|游戏|存档)|继续.{0,2}(游戏|进度)?|continue|load\s*(game|save)/i;
+      var target = null;
+      for (var i = recent.length - 1; i >= 0; i--) {
+        if (pattern.test(recent[i].text)) { target = recent[i]; break; }
+      }
+      if (!target) return;
+
+      // Menus normally start below the title and highlight their first row.
+      // Derive the target row from distinct text baselines instead of assuming
+      // every game places Continue on the second line.
+      var logicalHeight = Number(window.lcdHeight) || 320;
+      var minY = logicalHeight * 0.20;
+      var ys = [];
+      recent.forEach(function(item) {
+        if (item.y < minY || item.y > target.y + 3) return;
+        if (Math.abs(item.x - target.x) > (Number(window.lcdWidth) || 240) * 0.48) return;
+        if (!ys.some(function(y) { return Math.abs(y - item.y) < 4; })) ys.push(item.y);
+      });
+      ys.sort(function(a, b) { return a - b; });
+      var row = ys.findIndex(function(y) { return Math.abs(y - target.y) < 4; });
+      if (row < 0) row = 0;
+      row = Math.min(row, 6);
+
+      _autoContinueArmed = false;
+      if (_autoContinueTimer) clearInterval(_autoContinueTimer);
+      _autoContinueTimer = null;
+      for (let step = 0; step < row; step++) {
+        setTimeout(function() { _syntheticKey(-2); }, step * 170);
+      }
+      var selectDelay = row * 170 + 120;
+      setTimeout(function() { _syntheticKey(-5); }, selectDelay);
+      // Most games then show a save-slot list with the latest/first slot
+      // already selected. Confirm once more after that screen appears.
+      setTimeout(function() { _syntheticKey(-5); }, selectDelay + 950);
+      setTimeout(function() { _finishAutoContinue(true, target.text); }, selectDelay + 1250);
+    }
+
+    function _armAutoContinue() {
+      _hookAutoContinueText();
+      _autoContinueText = [];
+      _autoContinueArmed = true;
+      _autoContinueDeadline = Date.now() + 20000;
+      if (_autoContinueTimer) clearInterval(_autoContinueTimer);
+      _autoContinueTimer = setInterval(_tryAutoContinue, 180);
+      return true;
+    }
+
+    function _modifierRefine(mode, target) {
+      if (!_modifierSearch) return _modifierPage();
+      var info = _modifierType(_modifierSearch.type);
+      var nextIndices = [], nextPrevious = [];
+      target = Number(target);
+      for (var i = 0; i < _modifierSearch.indices.length; i++) {
+        var index = _modifierSearch.indices[i];
+        var current = Number(info.view[index]);
+        var previous = _modifierSearch.previous[i];
+        if (!Number.isFinite(current)) continue;
+        var keep = false;
+        switch (mode) {
+          case 'changed': keep = !_modifierEqual(current, previous, info.float); break;
+          case 'unchanged': keep = _modifierEqual(current, previous, info.float); break;
+          case 'increased': keep = current > previous; break;
+          case 'decreased': keep = current < previous; break;
+          default: keep = _modifierEqual(current, target, info.float); break;
+        }
+        if (keep) {
+          nextIndices.push(index);
+          nextPrevious.push(current);
+        }
+      }
+      _modifierSearch.indices = nextIndices;
+      _modifierSearch.previous = nextPrevious;
+      return _modifierPage();
+    }
+
+    function _modifierWrite(type, address, value, freeze) {
+      var info = _modifierType(type);
+      address = Number(address);
+      var index = Math.floor(address / info.bytes);
+      if (index < 0 || index >= info.view.length || address % info.bytes !== 0) {
+        throw new Error('Invalid memory address');
+      }
+      value = Number(value);
+      info.view[index] = value;
+      var key = type + ':' + address;
+      if (freeze) _modifierFrozen[key] = { type: type, address: address, value: value };
+      else delete _modifierFrozen[key];
+      return _modifierPage();
+    }
+
+    function _modifierReset() {
+      _modifierSearch = null;
+      return _modifierPage();
+    }
+
+    setInterval(function() {
+      Object.keys(_modifierFrozen).forEach(function(key) {
+        var item = _modifierFrozen[key];
+        try {
+          var info = _modifierType(item.type);
+          var index = Math.floor(item.address / info.bytes);
+          if (index >= 0 && index < info.view.length) info.view[index] = item.value;
+        } catch(e) {}
+      });
+    }, 100);
+
+    window.j2meModifier = {
+      firstScan: _modifierFirstScan,
+      refine: _modifierRefine,
+      refresh: _modifierPage,
+      write: _modifierWrite,
+      reset: _modifierReset
+    };
+
+    window.j2me = {
+      openJar: _openJar,
+      openJarFromURL: _openJarFromURL,
+      reset: function() { window.location.reload(); },
+      pause: _pause,
+      resume: _resume
+    };
+
+    window.j2meAPI = {
+      setScreenSize: _setScreenSize,
+      setMute: _setMute,
+      getSaveData: _getSaveData,
+      loadSaveData: _loadSaveData,
+      exportSaveState: _exportSaveState,
+      importSaveState: _importSaveState,
+      armAutoContinue: _armAutoContinue,
+      setGameResize: function(v) { config.gameresize = v; },
+      setCanvasSize: function(v) { config.canvasSize = v; },
+      setScreenRotation: function(v) { config.screenRotation = v; },
+      setConfig: function(k, v) { config[k] = v; },
+      setScaleMode: function(mode) {
+        _scaleMode = (mode === 'fit') ? 'fit' : 'stretch';
+        applyCanvasScale();
+      },
+      getScaleMode: function() { return _scaleMode; },
+      safeApply: safeApply,
+      setRotation: _setRotation,
+      pause: _pause,
+      resume: _resume,
+      setSpeed: _setSpeed,
+      isPaused: function() { return _paused; },
+      captureQuickSnapshot: _captureQuickSnapshot,
+      restoreQuickSnapshot: _restoreQuickSnapshot,
+      hasQuickSnapshot: function() { return !!_quickSnapshot; },
+      setParams: function(dict) {
+        if (!dict || typeof dict !== 'object') return;
+        for (var k in dict) {
+          if (!dict.hasOwnProperty(k)) continue;
+          var v = dict[k];
+          config[k] = v;
+          if (k === 'canvasSize' && v && v !== 'size-no') {
+            try {
+              var parts = v.split('-')[1].split('x');
+              var w = parseInt(parts[0]), h = parseInt(parts[1]);
+              if (w > 0 && h > 0) _setScreenSize(w, h);
+            } catch(e) {}
+          }
+        }
+      },
+      /**
+       * 各参数在引擎中的实际消费位置
+          参数	消费位置	作用
+          main	main-all.js:23325 jvm.startIsolate0(config.main, ...)	JVM 入口类，默认 com/sun/midp/main/MIDletSuiteLoader
+          midletClassName	main-all.js:10367-10369 CommandState.restoreCommandState	告诉 JVM 启动哪个 MIDlet 类；由 JAR 的 MANIFEST.MF 自动解析
+          args	main-all.js:10370-10373	传递给 MIDlet 的启动参数（最多 3 个）
+          jars	main-all.js:23180-23181	要加载的 JAR 文件路径，冒号分隔多个
+          jad	urlparams 中声明但当前代码未使用	JAD 描述文件路径（部分分支可能使用）
+          localjar	main-all.js:23353-23381	从 IndexedDB 加载的本地 JAR 路径
+          gamepad	main-all.js:24,23174	是否显示虚拟键盘，0=关闭
+          gamepadSize	main-all.js:25-26,46-47	虚拟键盘尺寸 CSS 类名
+          canvasSize	main-all.js:10207-10226 updateCanvas()	固定 canvas 内部分辨率，格式 size-WxH 或 size-no
+          gameresize	main-all.js:10244-10295 updateCanvas()	CSS 缩放倍率：resize-0x5/resize-0x75/resize-1/resize-1x5/resize-2/resize-2x5/resize-3
+          screenRotation	main-all.js:33-77	屏幕旋转：left（逆时针90°）/ right（顺时针90°）
+          autosize	main-all.js:10519,10160	1=canvas 跟随窗口自动调整，0=使用 #display 的固定尺寸
+          fontSize	main-all.js:13051	J2ME 字体渲染大小（像素），默认按屏幕高度自动计算
+          language	main-all.js:11271	UI 本地化语言，如 zh-CN、en-US，影响 MIDP 系统字符串
+          platform	main-all.js:688	System.getProperty("microedition.platform") 返回值，默认 Nokia 平台串
+          forceRuntimeCompilation	j2me.js:3571,3686,6436	强制 JIT 编译所有方法，调试用
+          deferStartup	main-all.js:23293	延迟启动 JVM 的毫秒数（基准测试用）
+          invokeThreshold	j2me.js:6908	方法调用次数阈值，超过后触发 JIT 编译
+          backwardBranchThreshold	j2me.js:6909	后向跳转（循环）次数阈值，超过后触发 JIT
+          customEmojiImageFormat	main-all.js:9495-9496	自定义 emoji 图片路径模板，NUM 替换为十六进制编号
+          chRegisteredID	main-all.js:19826	Content Handler 注册 ID
+          chRegisteredClassName	main-all.js:19827	Content Handler 注册类名
+          icc_mcc/mnc/msisdn, network_mcc/mnc	urlparams 中声明	当前代码中未使用（可能是旧版功能残留）
+          logConsole/logLevel	urlparams 中声明	当前代码中未使用
+      */
+      getParams: function() {
+        var out = {};
+        var keys = ['main','midletClassName','jars','jad','localjar','args',
+          'gamepad','gamepadSize','canvasSize','gameresize','screenRotation',
+          'autosize','fontSize','language','platform','forceRuntimeCompilation',
+          'deferStartup','customEmojiImageFormat','chRegisteredID',
+          'chRegisteredClassName','chRegisteredStorageID',
+          'chRegisteredRegistrationMethod','invokeThreshold',
+          'backwardBranchThreshold'];
+        for (var i = 0; i < keys.length; i++) {
+          if (config[keys[i]] !== undefined) out[keys[i]] = config[keys[i]];
+        }
+        return out;
+      }
+    };
+
+    window.Input = {
+      keyDown: function(k) { var c = _keyCodeMap[k]; if (c !== undefined && typeof MIDP !== 'undefined') MIDP.sendKeyPress(c); },
+      keyUp: function(k) { var c = _keyCodeMap[k]; if (c !== undefined && typeof MIDP !== 'undefined') MIDP.sendKeyRelease(c); }
+    };
+
+    var tp = new URLSearchParams(window.location.search);
+    if (tp.get('scale') === 'fit') { _scaleMode = 'fit'; }
+
+    // Wait for engine to be fully ready, then notify Swift layer.
+    // Swift will call _openJar / openJarFromURL after receiving the 'ready' message.
+    _waitForEngineReady(function() {
+      console.log('[iOS] Engine ready, notifying Swift layer');
+      notifyReady();
+    });
+
+    // test=1: auto-load test JAR (for browser testing only)
+    if (tp.get('test') === '1') {
+      _waitForEngineReady(function() {
+        setTimeout(function() {
+          console.log('[iOS] Test mode: loading BounceTales.jar');
+          _openJarFromURL('../java/jar/BounceTales.jar', 'BounceTales.jar');
+        }, 500);
+      });
+    }
+  })();
+  </script>
+</body>
+</html>

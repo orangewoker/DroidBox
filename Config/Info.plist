@@ -25,6 +25,12 @@
       <key>LSHandlerRank</key><string>Alternate</string>
       <key>LSItemContentTypes</key><array><string>public.zip-archive</string></array>
     </dict>
+    <dict>
+      <key>CFBundleTypeName</key><string>Java ME Game</string>
+      <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>com.sun.java-archive</string><string>com.droidbox.j2me-archive</string></array>
+    </dict>
   </array>
   <key>UTImportedTypeDeclarations</key>
   <array>
@@ -36,6 +42,16 @@
       <dict>
         <key>public.filename-extension</key><array><string>apk</string></array>
         <key>public.mime-type</key><string>application/vnd.android.package-archive</string>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key><string>com.droidbox.j2me-archive</string>
+      <key>UTTypeDescription</key><string>Java ME Game</string>
+      <key>UTTypeConformsTo</key><array><string>public.zip-archive</string><string>public.data</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key><array><string>jar</string></array>
+        <key>public.mime-type</key><string>application/java-archive</string>
       </dict>
     </dict>
   </array>

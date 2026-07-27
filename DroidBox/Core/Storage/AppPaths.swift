@@ -25,7 +25,7 @@ struct AppPaths: Sendable {
             try """
             DroidBox 本地导入目录
 
-            1. 把 .apk 或 .zip 文件放进本目录。
+            1. 把 .apk、.zip 或 .jar 文件放进本目录。
             2. 回到 DroidBox，点击工具栏菜单里的“扫描 Import 目录”。
             3. 导入开始、完成或失败都会在 DroidBox 内显示明确提示。
             """.write(to: instructions, atomically: true, encoding: .utf8)

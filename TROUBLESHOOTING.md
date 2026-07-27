@@ -10,10 +10,6 @@
 
 1.2.4 会先实测 `MAP_JIT`；失败后继续检查当前进程的 `CS_DEBUGGED` 与 `P_TRACED` 状态，并在调试器路径下验证 RW→RX 转换。通过 StikDebug 启动时应显示“可用（StikDebug/调试器）”。如果 StikDebug 在 DroidBox 启动后才附加，回到“运行时”页面点击“重新检测”。
 
-## KiriKiri/Kirikiroid2 ZIP 无法启动
-
-只包含 `.xp3` 与 `.tjs` 的 ZIP 是 KiriKiri 游戏数据包，不是 Android Runtime，也不是可直接安装的 APK。1.2.3 会正确识别、解压并保存在游戏库中。打开游戏详情，先导出内置的 Kirikiroid2 1.3.9 配套 IPA，用 LiveContainer 或证书重签安装，再使用“发送游戏 ZIP”交给配套引擎。
-
 ## Ren'Py 游戏版本不匹配
 
 Full Runtime 当前固定为 Ren'Py 8.4.1 / Python 3.12。APK 应包含 `assets/x-game/cache/x-bytecode-312.rpyb`（导入时会还原为 `cache/bytecode-312.rpyb`）；其他字节码版本会停止导入，避免崩溃或存档损坏。
@@ -37,3 +33,7 @@ Full Runtime 当前固定为 Ren'Py 8.4.1 / Python 3.12。APK 应包含 `assets/
 ## RPG Maker 黑屏
 
 查看游戏是否确实包含 `assets/www/index.html`,并检查大小写敏感的资源路径及游戏自身 JavaScript 错误。
+
+## JAR 导入后无法启动
+
+只支持包含 `META-INF/MANIFEST.MF` 与 MIDlet 声明的 J2ME/MIDP 游戏。普通桌面 Java JAR 或 Android 工具 JAR 不属于 Java ME 游戏。

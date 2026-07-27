@@ -9,6 +9,8 @@ test -f "$RUNTIME/base/main.py"
 mkdir -p "$APP_RESOURCES" "$APP_FRAMEWORKS"
 rm -rf "$APP_RESOURCES/base" "$APP_FRAMEWORKS/MetalANGLE.framework"
 ditto "$RUNTIME/base" "$APP_RESOURCES/base"
+rm -rf "$APP_RESOURCES/j2mejs"
+ditto "$SRCROOT/DroidBox/Resources/j2mejs" "$APP_RESOURCES/j2mejs"
 ditto "$SRCROOT/THIRD_PARTY_NOTICES.md" "$APP_RESOURCES/THIRD_PARTY_NOTICES.md"
 
 if [ "$PLATFORM_NAME" = "iphonesimulator" ]; then

@@ -50,13 +50,6 @@ enum CompatibilityAnalyzer {
                 detail: "此引擎仅提供实验兼容，图形性能可能不足。"
             ))
         }
-        if engine.engine == .kirikiri {
-            issues.append(.init(
-                severity: .error,
-                title: "需要 KiriKiri 配套引擎",
-                detail: "这是 KiriKiri/Kirikiroid2 游戏数据包，不是 Android Runtime。DroidBox 会解包并保留数据；请从游戏详情导出内置的 Kirikiroid2 1.3.9 配套引擎 IPA，并用当前签名方式安装。"
-            ))
-        }
 
         if engine.engine == .renpy8, let profile = RenPyPackageAnalyzer.analyze(entries: entries) {
             if !profile.hasPrivateRuntimeArchive || !profile.hasCommonAssets {

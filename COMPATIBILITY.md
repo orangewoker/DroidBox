@@ -7,8 +7,8 @@
 | Ren'Py 8.4.1 / Python 3.12 | 优秀 | 支持标准 RAPT APK、`assets/x-game` 路径还原、WebP/MP3/WebM 等 Renios 媒体能力 |
 | 其他 Ren'Py 8.x | 阻止启动 | 字节码或原生扩展版本不匹配时明确报告，不跨版本强行运行 |
 | Ren'Py 7.x | 待加入 | 需要独立的 Python 2/旧版 Renios 构建 |
-| KiriKiri/Kirikiroid2 XP3/TJS | 配套引擎 | 识别并解压游戏数据，内置 Kirikiroid2 1.3.9 配套 IPA；受 iOS 进程模型限制，需要导出后单独重签安装 |
 | RPG Maker MV/MZ | 优秀 | 提取 `assets/www` 并通过 WKWebView 运行 |
+| J2ME / Java ME JAR | 优秀 | 内置 J2ME 运行时，支持 MIDP/CLDC、虚拟键盘、分辨率切换与 RMS 存档 |
 
 ## Android VM 路径
 

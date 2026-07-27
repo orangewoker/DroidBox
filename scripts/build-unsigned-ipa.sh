@@ -15,22 +15,6 @@ xcodebuild -project "$ROOT/DroidBox.xcodeproj" -scheme DroidBox -configuration R
 APP="$DERIVED/Build/Products/Release-iphoneos/DroidBox.app"
 test -d "$APP"
 
-# Bundle the upstream, unencrypted Kirikiroid2 iOS companion. A regular iOS
-# process cannot execute a nested app binary, so DroidBox exposes this pinned
-# IPA for export/re-signing from a KiriKiri game's detail screen.
-KIRIKIRI_VERSION="1.3.9"
-KIRIKIRI_SHA256="96bb5c01631e2c5927c761b14839dfb53fabaf09d8a20e24250cbc29686a364b"
-KIRIKIRI_CACHE="$ROOT/build/Kirikiroid2-$KIRIKIRI_VERSION.ipa"
-if [ ! -f "$KIRIKIRI_CACHE" ] || [ "$(shasum -a 256 "$KIRIKIRI_CACHE" | awk '{print $1}')" != "$KIRIKIRI_SHA256" ]; then
-  curl -fL --retry 4 --retry-delay 3 \
-    "https://github.com/zeas2/Kirikiroid2/releases/download/$KIRIKIRI_VERSION/Kirikiroid2_$KIRIKIRI_VERSION.ipa" \
-    -o "$KIRIKIRI_CACHE.download"
-  echo "$KIRIKIRI_SHA256  $KIRIKIRI_CACHE.download" | shasum -a 256 -c -
-  mv "$KIRIKIRI_CACHE.download" "$KIRIKIRI_CACHE"
-fi
-mkdir -p "$APP/EmbeddedRuntimes"
-cp "$KIRIKIRI_CACHE" "$APP/EmbeddedRuntimes/Kirikiroid2-$KIRIKIRI_VERSION.ipa"
-
 if [ -d "$ROOT/Vendor/QEMUCore/Frameworks" ]; then
   mkdir -p "$APP/Frameworks"
   ditto "$ROOT/Vendor/QEMUCore/Frameworks" "$APP/Frameworks"

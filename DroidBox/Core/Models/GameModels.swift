@@ -1,14 +1,14 @@
 import Foundation
 
-enum SourceType: String, Codable, CaseIterable, Sendable { case apk, zip }
+enum SourceType: String, Codable, CaseIterable, Sendable { case apk, zip, jar }
 enum GameEngine: String, Codable, CaseIterable, Sendable {
-    case android, renpy7, renpy8, kirikiri, rpgMakerMV, rpgMakerMZ, unity, godot, libgdx, unknown
+    case android, renpy7, renpy8, j2me, rpgMakerMV, rpgMakerMZ, unity, godot, libgdx, unknown
     var displayName: String {
         switch self {
         case .android: "Android"
         case .renpy7: "Ren'Py 7"
         case .renpy8: "Ren'Py 8"
-        case .kirikiri: "KiriKiri"
+        case .j2me: "Java ME"
         case .rpgMakerMV: "RPG Maker MV"
         case .rpgMakerMZ: "RPG Maker MZ"
         case .unity: "Unity"
@@ -17,8 +17,16 @@ enum GameEngine: String, Codable, CaseIterable, Sendable {
         case .unknown: "未知"
         }
     }
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? .unknown
+    }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
-enum RuntimeMode: String, Codable, CaseIterable, Sendable { case automatic, androidVM, renpy, web, unavailable }
+enum RuntimeMode: String, Codable, CaseIterable, Sendable { case automatic, androidVM, renpy, web, j2me, unavailable }
 enum AndroidABI: String, Codable, CaseIterable, Sendable { case arm64 = "arm64-v8a", armv7 = "armeabi-v7a", x86, x86_64, javaOnly, unknown }
 enum GameOrientation: String, Codable, CaseIterable, Sendable { case automatic, portrait, landscape }
 enum CompatibilityLevel: String, Codable, Sendable { case excellent, good, experimental, unsupported }
@@ -63,6 +71,8 @@ struct GameRecord: Codable, Identifiable, Hashable, Sendable {
     var orientation: GameOrientation
     var compatibility: CompatibilityReport
     var controllerProfile: ControllerProfile?
+    var j2meScreenWidth: Int? = nil
+    var j2meScreenHeight: Int? = nil
     var createdAt: Date
     var lastPlayedAt: Date?
     var totalPlayTime: TimeInterval

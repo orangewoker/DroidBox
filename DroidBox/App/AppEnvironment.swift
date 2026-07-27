@@ -23,7 +23,7 @@ final class AppEnvironment {
     }
     func open(_ url: URL) {
         if url.scheme == "droidbox", let raw=URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first(where:{$0.name=="url"})?.value, let file=URL(string:raw) { importer.start(url:file) }
-        else if ["apk","zip"].contains(url.pathExtension.lowercased()) { importer.start(url:url) }
+        else if ["apk","zip","jar"].contains(url.pathExtension.lowercased()) { importer.start(url:url) }
     }
 
     func scanImportDirectory(silentIfEmpty: Bool = false) {
@@ -38,7 +38,7 @@ final class AppEnvironment {
             includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
         ))?
-        .filter { ["apk", "zip"].contains($0.pathExtension.lowercased()) }
+        .filter { ["apk", "zip", "jar"].contains($0.pathExtension.lowercased()) }
         .sorted {
             let left = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let right = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -49,7 +49,7 @@ final class AppEnvironment {
             if !silentIfEmpty {
                 importer.reportNotice(
                     title: "Import 目录为空",
-                    message: "请把 APK 或 ZIP 放入“文件 → 我的 iPhone → DroidBox → Import”，然后再次扫描。"
+                    message: "请把 APK、ZIP 或 JAR 放入“文件 → 我的 iPhone → DroidBox → Import”，然后再次扫描。"
                 )
             }
             return

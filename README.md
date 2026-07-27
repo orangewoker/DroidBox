@@ -7,7 +7,8 @@ DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库与运行器，最低系统�
 ## 功能
 
 - 安全导入 APK/ZIP，解析 Binary XML Manifest 与 `resources.arsc`
-- 识别 ABI、Ren'Py、KiriKiri、RPG Maker、Unity、Godot 与 LibGDX
+- 识别 ABI、Ren'Py、RPG Maker、Unity、Godot 与 LibGDX
+- 直接导入并运行 J2ME/Java ME `.jar` 游戏
 - Ren'Py 8.4.1 / Python 3.12 原生运行，支持 RAPT 的 `x-` 路径还原
 - 大型 Ren'Py APK 直接解包，不额外保留 APK 副本
 - RPG Maker MV/MZ 通过隔离 URL Scheme 的 WebKit 快速路径运行
@@ -29,7 +30,6 @@ DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库与运行器，最低系统�
 
 1.2.2 修复该 APK 中 `res/Ms.png` 与 `res/mS.png` 仅大小写不同而被误判为重复条目的问题。ZIP 规范及 Android 资源路径区分大小写；DroidBox 现在只拒绝完全相同的归档路径，并仍会在真正解压时阻止两个条目覆盖同一目标文件。
 
-1.2.3 为文件选择、读取、解析、解压、成功和失败增加全流程可见反馈；JIT 改为实际探测 `MAP_JIT`。构建同时内置固定校验的 Kirikiroid2 1.3.9 iOS 配套 IPA，可在 KiriKiri 游戏详情中导出后通过 LiveContainer 或证书重签安装。
 
 1.2.4 不再使用在 SDL 手动托管窗口中丢失回调的 SwiftUI `fileImporter`，改为由长期存活的 UIKit `UIDocumentPickerDelegate` 直接接收结果，并以“打开原文件”模式避免选择 3 GB APK 时先发生无提示复制。应用启动时还会创建公开的 `DroidBox/Import` 目录，可从设置或游戏库菜单打开、扫描。JIT 检测同时支持 `MAP_JIT` 和 StikDebug 留下的 `CS_DEBUGGED`/`P_TRACED` 调试器路径。
 
@@ -44,3 +44,7 @@ chmod +x scripts/*.sh
 ```
 
 产物位于 `dist/DroidBox-unsigned.ipa`。Windows 使用 GitHub Actions 构建，详见 [BUILDING.md](BUILDING.md)。
+
+## 1.2.5
+
+内置 J2ME/Java ME 运行时，可直接导入 `.jar`；修复系统文件选择器点“打开”后没有回调的问题，并加入游戏内分辨率、虚拟按键与退出设置。

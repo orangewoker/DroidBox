@@ -26,6 +26,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.maximumFileSizeBytes, 8 * 1024 * 1024 * 1024)
         XCTAssertTrue(settings.automaticRuntimeSelection)
         XCTAssertTrue(settings.showSystemKeys)
+        XCTAssertEqual(settings.playerResolution, .gameDefault)
+        XCTAssertTrue(settings.virtualControlsEnabled)
     }
 
     func testChangesPersistAcrossInstances() {
@@ -33,11 +35,15 @@ final class AppSettingsTests: XCTestCase {
         settings.vmMemoryMB = 2048
         settings.maximumFileSizeGB = 16
         settings.showSystemKeys = false
+        settings.playerResolution = .r240x320
+        settings.virtualControlsOpacity = 0.55
 
         let reloaded = AppSettings(defaults: defaults)
         XCTAssertEqual(reloaded.vmMemoryMB, 2048)
         XCTAssertEqual(reloaded.maximumFileSizeGB, 16)
         XCTAssertFalse(reloaded.showSystemKeys)
+        XCTAssertEqual(reloaded.playerResolution, .r240x320)
+        XCTAssertEqual(reloaded.virtualControlsOpacity, 0.55, accuracy: 0.001)
     }
 
     func testFalseBooleanSurvivesReload() {

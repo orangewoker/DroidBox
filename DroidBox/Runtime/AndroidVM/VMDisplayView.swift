@@ -3,6 +3,7 @@ import SwiftUI
 /// Draws the guest framebuffer and forwards touches as VNC pointer events.
 struct VMDisplayView: View {
     let controller: VMDisplayController
+    var stretch = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -13,7 +14,7 @@ struct VMDisplayView: View {
                     Image(decorative: frame.image, scale: 1, orientation: .up)
                         .interpolation(.low)
                         .resizable()
-                        .scaledToFit()
+                        .aspectRatio(contentMode: stretch ? .fill : .fit)
                         .accessibilityLabel("Android 画面")
                 } else {
                     ProgressView().tint(.white)

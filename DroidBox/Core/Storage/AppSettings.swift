@@ -1,6 +1,40 @@
 import Foundation
 import Observation
 
+enum PlayerResolution: String, CaseIterable, Identifiable, Sendable {
+    case gameDefault
+    case r128x160
+    case r176x208
+    case r240x320
+    case r360x640
+    case r720x1280
+    case r1080x1920
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .gameDefault: "游戏默认"
+        case .r128x160: "128 × 160"
+        case .r176x208: "176 × 208"
+        case .r240x320: "240 × 320"
+        case .r360x640: "360 × 640"
+        case .r720x1280: "720 × 1280"
+        case .r1080x1920: "1080 × 1920"
+        }
+    }
+    var size: (width: Int, height: Int)? {
+        switch self {
+        case .gameDefault: nil
+        case .r128x160: (128, 160)
+        case .r176x208: (176, 208)
+        case .r240x320: (240, 320)
+        case .r360x640: (360, 640)
+        case .r720x1280: (720, 1280)
+        case .r1080x1920: (1080, 1920)
+        }
+    }
+}
+
 /// User-adjustable runtime and import limits, persisted to `UserDefaults`.
 ///
 /// The Settings screen previously bound to `.constant()` values, so every choice was
@@ -21,6 +55,10 @@ final class AppSettings {
         var automaticRuntimeSelection = true
         var keepScreenAwake = true
         var showSystemKeys = true
+        var playerResolution = PlayerResolution.gameDefault
+        var virtualControlsEnabled = true
+        var virtualControlsOpacity = 0.82
+        var stretchGameDisplay = false
     }
 
     private var storage: Storage
@@ -34,6 +72,17 @@ final class AppSettings {
         loaded.automaticRuntimeSelection = Self.readBool(defaults, .automaticRuntimeSelection, fallback: loaded.automaticRuntimeSelection)
         loaded.keepScreenAwake = Self.readBool(defaults, .keepScreenAwake, fallback: loaded.keepScreenAwake)
         loaded.showSystemKeys = Self.readBool(defaults, .showSystemKeys, fallback: loaded.showSystemKeys)
+        loaded.playerResolution = PlayerResolution(
+            rawValue: defaults.string(forKey: Key.playerResolution.rawValue) ?? ""
+        ) ?? loaded.playerResolution
+        loaded.virtualControlsEnabled = Self.readBool(
+            defaults, .virtualControlsEnabled, fallback: loaded.virtualControlsEnabled
+        )
+        let opacity = defaults.object(forKey: Key.virtualControlsOpacity.rawValue) as? Double
+        loaded.virtualControlsOpacity = min(max(opacity ?? loaded.virtualControlsOpacity, 0.25), 1)
+        loaded.stretchGameDisplay = Self.readBool(
+            defaults, .stretchGameDisplay, fallback: loaded.stretchGameDisplay
+        )
         storage = loaded
     }
 
@@ -72,6 +121,38 @@ final class AppSettings {
         set { storage.showSystemKeys = newValue; defaults.set(newValue, forKey: Key.showSystemKeys.rawValue) }
     }
 
+    var playerResolution: PlayerResolution {
+        get { storage.playerResolution }
+        set {
+            storage.playerResolution = newValue
+            defaults.set(newValue.rawValue, forKey: Key.playerResolution.rawValue)
+        }
+    }
+
+    var virtualControlsEnabled: Bool {
+        get { storage.virtualControlsEnabled }
+        set {
+            storage.virtualControlsEnabled = newValue
+            defaults.set(newValue, forKey: Key.virtualControlsEnabled.rawValue)
+        }
+    }
+
+    var virtualControlsOpacity: Double {
+        get { storage.virtualControlsOpacity }
+        set {
+            storage.virtualControlsOpacity = min(max(newValue, 0.25), 1)
+            defaults.set(storage.virtualControlsOpacity, forKey: Key.virtualControlsOpacity.rawValue)
+        }
+    }
+
+    var stretchGameDisplay: Bool {
+        get { storage.stretchGameDisplay }
+        set {
+            storage.stretchGameDisplay = newValue
+            defaults.set(newValue, forKey: Key.stretchGameDisplay.rawValue)
+        }
+    }
+
     var maximumFileSizeBytes: UInt64 { UInt64(maximumFileSizeGB) * 1024 * 1024 * 1024 }
 
     func resetToDefaults() {
@@ -81,6 +162,10 @@ final class AppSettings {
         automaticRuntimeSelection = fresh.automaticRuntimeSelection
         keepScreenAwake = fresh.keepScreenAwake
         showSystemKeys = fresh.showSystemKeys
+        playerResolution = fresh.playerResolution
+        virtualControlsEnabled = fresh.virtualControlsEnabled
+        virtualControlsOpacity = fresh.virtualControlsOpacity
+        stretchGameDisplay = fresh.stretchGameDisplay
     }
 
     private enum Key: String {
@@ -89,6 +174,10 @@ final class AppSettings {
         case automaticRuntimeSelection = "settings.automaticRuntimeSelection"
         case keepScreenAwake = "settings.keepScreenAwake"
         case showSystemKeys = "settings.showSystemKeys"
+        case playerResolution = "settings.playerResolution"
+        case virtualControlsEnabled = "settings.virtualControlsEnabled"
+        case virtualControlsOpacity = "settings.virtualControlsOpacity"
+        case stretchGameDisplay = "settings.stretchGameDisplay"
     }
 
     /// `integer(forKey:)` and `bool(forKey:)` both return zero values for a missing key,

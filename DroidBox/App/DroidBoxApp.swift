@@ -12,7 +12,8 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
     private var window: UIWindow?
     private var environment: AppEnvironment?
     private var launchSignal: DispatchSemaphore?
-    private weak var activeDocumentPicker: UIDocumentPickerViewController?
+    private var activeDocumentPicker: UIDocumentPickerViewController?
+    private var activeRenPyGameID: UUID?
 
     var renPyRuntimeAvailable: Bool {
         Bundle.main.url(forResource: "main", withExtension: "py", subdirectory: "base") != nil
@@ -44,8 +45,8 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
 
     /// SwiftUI's fileImporter is presented through SDL's manually hosted scene and
     /// did not reliably deliver its completion callback on device. Present UIKit's
-    /// picker directly, retain its delegate here, open files in place (no silent
-    /// 3 GB copy), and start importing only after the picker has dismissed.
+    /// picker directly, acquire the security scope before the delegate returns,
+    /// and avoid a second multi-gigabyte copy of a large APK.
     func presentGameImporter() {
         guard let environment else { return }
         guard !environment.importer.isImporting else {
@@ -66,9 +67,8 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
         while let presented = presenter.presentedViewController {
             presenter = presented
         }
-        let apk = UTType(filenameExtension: "apk") ?? .data
         let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [apk, .zip, .archive, .data],
+            forOpeningContentTypes: [.data],
             asCopy: false
         )
         picker.delegate = self
@@ -87,11 +87,19 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
             environment?.importer.reportPickerCancelled()
             return
         }
-        controller.dismiss(animated: true) { [weak self] in
-            Task { @MainActor in
-                self?.environment?.importer.start(url: url)
-            }
+        let supported = ["apk", "zip", "jar"]
+        guard supported.contains(url.pathExtension.lowercased()) else {
+            environment?.importer.reportNotice(
+                title: "不支持这个文件",
+                message: "请选择 .apk、.zip 或 .jar 游戏文件。"
+            )
+            return
         }
+        // Do not call dismiss here: UIDocumentPicker dismisses itself. Waiting for
+        // a second dismissal completion was the reason tapping “打开” produced no
+        // import and no feedback on device.
+        let securityAccess = url.startAccessingSecurityScopedResource()
+        environment?.importer.start(url: url, securityAccessAlreadyActive: securityAccess)
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
@@ -103,21 +111,46 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
     func launchRenPy(_ game: GameRecord) -> Bool {
         guard renPyRuntimeAvailable,
               FileManager.default.fileExists(atPath: game.installedContentPath),
-              let signal = launchSignal else {
+              let environment else {
             return false
         }
 
+        if launchSignal == nil {
+            guard activeRenPyGameID == game.id else {
+                environment.importer.reportNotice(
+                    title: "已有 Ren'Py 游戏在运行",
+                    message: "当前版本可返回并继续同一个 Ren'Py 会话；切换其他 Ren'Py 游戏需要重新打开 DroidBox。"
+                )
+                return false
+            }
+            window?.isHidden = true
+            RenPyControlOverlay.shared.show(environment: environment) { [weak self] in
+                self?.returnFromRenPy()
+            }
+            return true
+        }
+        guard let signal = launchSignal else { return false }
         setenv("RENPY_SEARCHPATH", game.installedContentPath, 1)
         setenv("RENPY_PATH_TO_SAVES", game.dataPath, 1)
         setenv("DROIDBOX_GAME_ID", game.id.uuidString, 1)
         UIApplication.shared.isIdleTimerDisabled = true
+        activeRenPyGameID = game.id
 
         window?.isHidden = true
-        window = nil
-        environment = nil
         launchSignal = nil
+        RenPyControlOverlay.shared.show(environment: environment) { [weak self] in
+            self?.returnFromRenPy()
+        }
         signal.signal()
         return true
+    }
+
+    func returnFromRenPy() {
+        RenPyControlOverlay.shared.hide()
+        environment?.presentedPlayer = nil
+        window?.isHidden = false
+        window?.makeKeyAndVisible()
+        UIApplication.shared.isIdleTimerDisabled = false
     }
 }
 

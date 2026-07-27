@@ -1,11 +1,12 @@
 import Foundation
+import CoreFoundation
 import Observation
 import UIKit
 
 enum ImportStage: String, CaseIterable, Sendable {
     case copying = "复制文件"
     case security = "安全检查"
-    case parsing = "解析 APK"
+    case parsing = "解析游戏文件"
     case icon = "提取图标"
     case engine = "检测引擎"
     case compatibility = "分析兼容性"
@@ -70,8 +71,11 @@ final class ImportCoordinator {
         notice = ImportNotice(title: title, message: message)
     }
 
-    func start(url: URL) {
+    func start(url: URL, securityAccessAlreadyActive: Bool = false) {
         guard !isImporting else {
+            if securityAccessAlreadyActive {
+                url.stopAccessingSecurityScopedResource()
+            }
             notice = ImportNotice(title: "正在导入", message: "请等待当前导入结束后再选择其他文件。")
             return
         }
@@ -88,7 +92,8 @@ final class ImportCoordinator {
                 let game = try await Self.importFile(
                     url,
                     paths: paths,
-                    maximumFileSize: maximumBytes
+                    maximumFileSize: maximumBytes,
+                    securityAccessAlreadyActive: securityAccessAlreadyActive
                 ) { [weak self] stage, progress in
                     self?.set(stage, progress)
                 }
@@ -130,17 +135,25 @@ final class ImportCoordinator {
         _ source: URL,
         paths: AppPaths,
         maximumFileSize: UInt64,
+        securityAccessAlreadyActive: Bool,
         progress update: @escaping @MainActor @Sendable (ImportStage, Double) -> Void
     ) async throws -> GameRecord {
-        let access = source.startAccessingSecurityScopedResource()
+        let access = securityAccessAlreadyActive || source.startAccessingSecurityScopedResource()
         defer {
             if access { source.stopAccessingSecurityScopedResource() }
         }
 
         try Task.checkCancellation()
+        guard ["apk", "zip", "jar"].contains(source.pathExtension.lowercased()) else {
+            throw DroidBoxError.unsupported("仅支持 APK、ZIP 和 JAR 游戏文件。")
+        }
         let values = try source.resourceValues(forKeys: [.fileSizeKey])
         guard UInt64(values.fileSize ?? 0) <= maximumFileSize else {
             throw DroidBoxError.fileTooLarge
+        }
+
+        if source.pathExtension.lowercased() == "jar" {
+            return try await importJAR(source, paths: paths, progress: update)
         }
 
         let id = UUID()
@@ -251,21 +264,13 @@ final class ImportCoordinator {
                 originalFilePath = ""
                 runtimeProfileID = RenPyPackageProfile.bundledRuntimeVersion
 
-            case .unavailable where detected.engine == .kirikiri:
-                try requireStorage(for: archive.entries, prefix: "", at: root)
-                try archive.extract(prefix: "", to: content, progress: extractionProgress)
-                let local = sourceDirectory.appending(path: source.lastPathComponent)
-                try FileManager.default.copyItem(at: source, to: local)
-                originalFilePath = local.path
-                runtimeProfileID = "kirikiroid2-1.3.9"
-
             case .androidVM, .unavailable:
                 await update(.copying, 0.78)
                 let local = sourceDirectory.appending(path: source.lastPathComponent)
                 try FileManager.default.copyItem(at: source, to: local)
                 originalFilePath = local.path
 
-            case .automatic:
+            case .automatic, .j2me:
                 break
             }
 
@@ -292,6 +297,8 @@ final class ImportCoordinator {
                 orientation: manifest.orientation,
                 compatibility: report,
                 controllerProfile: .init(),
+                j2meScreenWidth: nil,
+                j2meScreenHeight: nil,
                 createdAt: Date(),
                 lastPlayedAt: nil,
                 totalPlayTime: 0
@@ -303,6 +310,191 @@ final class ImportCoordinator {
             try? FileManager.default.removeItem(at: root)
             throw error
         }
+    }
+
+    private nonisolated static func importJAR(
+        _ source: URL,
+        paths: AppPaths,
+        progress update: @escaping @MainActor @Sendable (ImportStage, Double) -> Void
+    ) async throws -> GameRecord {
+        let id = UUID()
+        let root = paths.game(id)
+        let sourceDirectory = root.appending(path: "source")
+        let dataDirectory = root.appending(path: "saves")
+        let content = root.appending(path: "content")
+
+        do {
+            try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: content, withIntermediateDirectories: true)
+            await update(.security, 0.15)
+
+            let archive = try SafeArchive(
+                url: source,
+                maxExpandedBytes: 512 * 1024 * 1024,
+                maxRatio: 100
+            )
+            guard let manifestEntry = archive.entries.first(where: {
+                $0.path.caseInsensitiveCompare("META-INF/MANIFEST.MF") == .orderedSame
+            }) else {
+                throw DroidBoxError.unsupported("这个 JAR 缺少 META-INF/MANIFEST.MF，不是有效的 Java ME 游戏。")
+            }
+
+            await update(.parsing, 0.35)
+            let manifestData = try archive.data(path: manifestEntry.path, maximum: 2 * 1024 * 1024)
+            let manifest = parseJARManifest(manifestData)
+            guard manifest["MIDlet-1"] != nil || manifest["MIDlet-Name"] != nil else {
+                throw DroidBoxError.unsupported("没有检测到 MIDlet 信息；当前仅支持 J2ME/MIDP 游戏 JAR。")
+            }
+
+            let local = sourceDirectory.appending(path: "game.jar")
+            try copyCoordinatedFile(from: source, to: local)
+
+            await update(.icon, 0.55)
+            var iconPath: String?
+            if let declared = jarIconPath(manifest),
+               let entry = archive.entries.first(where: {
+                   $0.path.caseInsensitiveCompare(declared) == .orderedSame
+               }),
+               let image = UIImage(data: try archive.data(path: entry.path, maximum: 16 * 1024 * 1024)),
+               let png = image.pngData() {
+                let destination = root.appending(path: "icon.png")
+                try png.write(to: destination, options: .atomic)
+                iconPath = destination.path
+            }
+
+            await update(.engine, 0.70)
+            let title = jarTitle(manifest)
+                ?? source.deletingPathExtension().lastPathComponent
+            let screen = jarScreenSize(manifest, fileName: source.lastPathComponent)
+            let report = CompatibilityReport(
+                level: .excellent,
+                engineConfidence: 1,
+                summary: "可使用内置 J2ME 运行时启动",
+                issues: []
+            )
+            let game = GameRecord(
+                id: id,
+                title: title,
+                packageName: manifest["MIDlet-Vendor"],
+                versionName: manifest["MIDlet-Version"],
+                versionCode: nil,
+                sourceType: .jar,
+                engine: .j2me,
+                runtimeMode: .j2me,
+                abiList: [.javaOnly],
+                iconPath: iconPath,
+                coverPath: nil,
+                originalFilePath: local.path,
+                installedContentPath: content.path,
+                dataPath: dataDirectory.path,
+                runtimeProfileID: "j2mejs",
+                orientation: screen.width > screen.height ? .landscape : .portrait,
+                compatibility: report,
+                controllerProfile: .init(),
+                j2meScreenWidth: screen.width,
+                j2meScreenHeight: screen.height,
+                createdAt: Date(),
+                lastPlayedAt: nil,
+                totalPlayTime: 0
+            )
+            await update(.runtime, 0.92)
+            let metadata = try JSONEncoder().encode(game)
+            try metadata.write(to: root.appending(path: "metadata.json"), options: .atomic)
+            return game
+        } catch {
+            try? FileManager.default.removeItem(at: root)
+            throw error
+        }
+    }
+
+    private nonisolated static func copyCoordinatedFile(from source: URL, to destination: URL) throws {
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var copyError: Error?
+        coordinator.coordinate(readingItemAt: source, options: .withoutChanges, error: &coordinationError) {
+            do { try FileManager.default.copyItem(at: $0, to: destination) }
+            catch { copyError = error }
+        }
+        if let coordinationError { throw coordinationError }
+        if let copyError { throw copyError }
+    }
+
+    private nonisolated static func parseJARManifest(_ data: Data) -> [String: String] {
+        let gb18030 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
+            CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+        ))
+        let content = [String.Encoding.utf8, gb18030, .windowsCP1252, .isoLatin1]
+            .lazy.compactMap { String(data: data, encoding: $0) }.first ?? ""
+        var values: [String: String] = [:]
+        var key: String?
+        var value = ""
+        func flush() {
+            if let key { values[key] = value }
+        }
+        for rawLine in content.components(separatedBy: .newlines) {
+            let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
+            if line.hasPrefix(" ") || line.hasPrefix("\t") {
+                value += line.dropFirst()
+                continue
+            }
+            flush()
+            guard let colon = line.firstIndex(of: ":") else {
+                key = nil
+                value = ""
+                continue
+            }
+            key = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
+            value = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+        }
+        flush()
+        return values
+    }
+
+    private nonisolated static func jarTitle(_ manifest: [String: String]) -> String? {
+        let declared = manifest["MIDlet-1"]?
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .first.map(String.init)?.trimmingCharacters(in: .whitespaces)
+        return declared?.isEmpty == false ? declared : manifest["MIDlet-Name"]
+    }
+
+    private nonisolated static func jarIconPath(_ manifest: [String: String]) -> String? {
+        var path: String?
+        if let declaration = manifest["MIDlet-1"] {
+            let fields = declaration.split(separator: ",", omittingEmptySubsequences: false)
+            if fields.count > 1 { path = String(fields[1]).trimmingCharacters(in: .whitespaces) }
+        }
+        path = path?.isEmpty == false ? path : manifest["MIDlet-Icon"]
+        return path.map { $0.hasPrefix("/") ? String($0.dropFirst()) : $0 }
+    }
+
+    private nonisolated static func jarScreenSize(
+        _ manifest: [String: String],
+        fileName: String
+    ) -> (width: Int, height: Int) {
+        let values = [
+            manifest["Nokia-MIDlet-Canvas-Size"],
+            manifest["MIDlet-ScreenSize"],
+            manifest["Nokia-MIDlet-Original-Display-Size"],
+            manifest["MIDlet-Display-Size"],
+            fileName
+        ].compactMap { $0 }
+        let expression = try? NSRegularExpression(
+            pattern: #"(?<!\d)(\d{2,4})\s*[xX,*]\s*(\d{2,4})(?!\d)"#
+        )
+        for value in values {
+            guard let expression,
+                  let match = expression.firstMatch(
+                    in: value,
+                    range: NSRange(value.startIndex..., in: value)
+                  ),
+                  let widthRange = Range(match.range(at: 1), in: value),
+                  let heightRange = Range(match.range(at: 2), in: value),
+                  let width = Int(value[widthRange]),
+                  let height = Int(value[heightRange]) else { continue }
+            return (width, height)
+        }
+        return (240, 320)
     }
 
     private func set(_ stage: ImportStage, _ progress: Double) {

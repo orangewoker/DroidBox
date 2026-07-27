@@ -4,7 +4,15 @@ import XCTest
 final class APKKitTests:XCTestCase{
     func testSafePaths(){XCTAssertTrue(SafeArchive.isSafe("assets/www/index.html"));XCTAssertFalse(SafeArchive.isSafe("../escape"));XCTAssertFalse(SafeArchive.isSafe("/absolute"));XCTAssertFalse(SafeArchive.isSafe("C:/escape"))}
     func testEngineDetection(){let result=EngineDetector.detect(paths:["assets/www/index.html","assets/www/js/rmmz_core.js","assets/www/data/System.json"]);XCTAssertEqual(result.engine,.rpgMakerMZ);XCTAssertGreaterThan(result.confidence,0.5)}
-    func testKiriKiriDetection(){let result=EngineDetector.detect(paths:["patch.tjs","鸑鷟：摩耶之纱.xp3"]);XCTAssertEqual(result.engine,.kirikiri);XCTAssertGreaterThan(result.confidence,0.8)}
+    func testRemovedKiriKiriRecordsMigrateToUnknown() throws {
+        let value = try JSONDecoder().decode(GameEngine.self, from: Data(#""kirikiri""#.utf8))
+        XCTAssertEqual(value, .unknown)
+    }
+    func testJ2METypesAreAvailable() {
+        XCTAssertEqual(SourceType.jar.rawValue, "jar")
+        XCTAssertEqual(GameEngine.j2me.displayName, "Java ME")
+        XCTAssertEqual(RuntimeMode.j2me.rawValue, "j2me")
+    }
     func testImportDirectoryIsCreatedWithInstructions() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let paths = try AppPaths(root: root)
