@@ -6,6 +6,7 @@
 |---|---|---|---|
 | Ren'Py SDK | 8.4.1 | SHA-256 `b542062465b6a253f4286b0fd48b83dd578bd7b6282a52d4c1eaecbfe21f002d` | Python/Ren'Py 基础资源 |
 | Renios | 8.4.1 | SHA-256 `f631ccd21f6fdc22619882bf55d44653f402dfe832422d1eefa804cba1ee819f` | iOS arm64/Simulator 静态库、SDL2、FFmpeg、MetalANGLE |
+| Kirikiroid2 iOS 配套 IPA | 1.3.9 | SHA-256 `96bb5c01631e2c5927c761b14839dfb53fabaf09d8a20e24250cbc29686a364b` | 从 KiriKiri 游戏详情导出并单独重签安装 |
 
 `scripts/prepare-renpy-runtime.sh` 只从 Ren'Py 官方下载地址获取上述固定文件，校验通过后才生成构建目录。二进制不会提交到 Git。
 

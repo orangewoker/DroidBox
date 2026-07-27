@@ -6,7 +6,7 @@
 
 ## KiriKiri/Kirikiroid2 ZIP 无法启动
 
-只包含 `.xp3` 与 `.tjs` 的 ZIP 是 KiriKiri 游戏数据包，不是 Android Runtime，也不是可直接安装的 APK。1.2.2 会正确识别并保存在游戏库中，但在嵌入独立 KiriKiri iOS 引擎前会禁用“启动”按钮。
+只包含 `.xp3` 与 `.tjs` 的 ZIP 是 KiriKiri 游戏数据包，不是 Android Runtime，也不是可直接安装的 APK。1.2.3 会正确识别、解压并保存在游戏库中。打开游戏详情，先导出内置的 Kirikiroid2 1.3.9 配套 IPA，用 LiveContainer 或证书重签安装，再使用“发送游戏 ZIP”交给配套引擎。
 
 ## Ren'Py 游戏版本不匹配
 

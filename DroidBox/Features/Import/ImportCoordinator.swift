@@ -9,8 +9,15 @@ enum ImportStage: String, CaseIterable, Sendable {
     case icon = "提取图标"
     case engine = "检测引擎"
     case compatibility = "分析兼容性"
+    case extracting = "解压游戏数据"
     case runtime = "准备 Runtime"
     case finished = "完成"
+}
+
+struct ImportNotice: Identifiable, Sendable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 @MainActor @Observable
@@ -19,6 +26,7 @@ final class ImportCoordinator {
     private(set) var progress: Double = 0
     private(set) var isImporting = false
     private(set) var errorMessage: String?
+    private(set) var notice: ImportNotice?
     private var task: Task<Void, Never>?
 
     let library: GameLibrary
@@ -38,10 +46,29 @@ final class ImportCoordinator {
         errorMessage = nil
     }
 
+    func clearNotice() {
+        notice = nil
+        errorMessage = nil
+    }
+
+    func reportPickerFailure(_ error: Error) {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain && nsError.code == CocoaError.userCancelled.rawValue {
+            notice = ImportNotice(title: "已取消导入", message: "没有选择文件。")
+        } else {
+            let message = "系统文件选择器返回错误：\(error.localizedDescription)"
+            errorMessage = message
+            notice = ImportNotice(title: "无法读取所选文件", message: message)
+        }
+    }
+
     func start(url: URL) {
         guard !isImporting else { return }
         isImporting = true
         errorMessage = nil
+        notice = nil
+        stage = .copying
+        progress = 0.02
         let paths = library.paths
         let maximumBytes = maximumFileSize
 
@@ -57,10 +84,30 @@ final class ImportCoordinator {
                 try library.add(game)
                 stage = .finished
                 progress = 1
+                if game.runtimeMode == .unavailable {
+                    let detail = game.compatibility.issues.first?.detail
+                        ?? game.compatibility.summary
+                    notice = ImportNotice(
+                        title: "已识别，但当前不能启动",
+                        message: "\(game.title) 已加入游戏库。\(detail)"
+                    )
+                } else if game.runtimeMode == .androidVM {
+                    notice = ImportNotice(
+                        title: "APK 已导入",
+                        message: "\(game.title) 已加入游戏库；普通 Android APK 仍需要 QEMU Core 与 Android Runtime 才能启动。"
+                    )
+                } else {
+                    notice = ImportNotice(
+                        title: "导入完成",
+                        message: "\(game.title) 已加入游戏库，可以打开详情页启动。"
+                    )
+                }
             } catch is CancellationError {
                 errorMessage = DroidBoxError.importCancelled.localizedDescription
+                notice = ImportNotice(title: "导入已取消", message: errorMessage ?? "")
             } catch {
                 errorMessage = error.localizedDescription
+                notice = ImportNotice(title: "导入失败", message: errorMessage ?? "未知错误")
             }
             isImporting = false
         }
@@ -158,10 +205,16 @@ final class ImportCoordinator {
 
             var originalFilePath = source.path
             var runtimeProfileID = "default"
+            let extractionProgress: @Sendable (Int, Int) -> Void = { completed, total in
+                let ratio = total > 0 ? Double(completed) / Double(total) : 1
+                Task { @MainActor in
+                    update(.extracting, 0.72 + ratio * 0.16)
+                }
+            }
             switch mode {
             case .web:
                 try requireStorage(for: archive.entries, prefix: "assets/www/", at: root)
-                try archive.extract(prefix: "assets/www/", to: content)
+                try archive.extract(prefix: "assets/www/", to: content, progress: extractionProgress)
 
             case .renpy:
                 guard let profile = RenPyPackageAnalyzer.analyze(entries: archive.entries),
@@ -173,7 +226,8 @@ final class ImportCoordinator {
                 try archive.extract(
                     prefix: profile.gamePrefix,
                     to: content,
-                    stripRenPyAssetEscaping: profile.usesAndroidAssetEscaping
+                    stripRenPyAssetEscaping: profile.usesAndroidAssetEscaping,
+                    progress: extractionProgress
                 )
                 let bytecode = content.appending(
                     path: "cache/bytecode-\(RenPyPackageProfile.bundledPythonBytecodeTag).rpyb"
@@ -185,6 +239,14 @@ final class ImportCoordinator {
                 // Android package would almost double storage for a 3 GB visual novel.
                 originalFilePath = ""
                 runtimeProfileID = RenPyPackageProfile.bundledRuntimeVersion
+
+            case .unavailable where detected.engine == .kirikiri:
+                try requireStorage(for: archive.entries, prefix: "", at: root)
+                try archive.extract(prefix: "", to: content, progress: extractionProgress)
+                let local = sourceDirectory.appending(path: source.lastPathComponent)
+                try FileManager.default.copyItem(at: source, to: local)
+                originalFilePath = local.path
+                runtimeProfileID = "kirikiroid2-1.3.9"
 
             case .androidVM, .unavailable:
                 await update(.copying, 0.78)

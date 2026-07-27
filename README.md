@@ -29,6 +29,8 @@ DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库与运行器，最低系统�
 
 1.2.2 修复该 APK 中 `res/Ms.png` 与 `res/mS.png` 仅大小写不同而被误判为重复条目的问题。ZIP 规范及 Android 资源路径区分大小写；DroidBox 现在只拒绝完全相同的归档路径，并仍会在真正解压时阻止两个条目覆盖同一目标文件。
 
+1.2.3 为文件选择、读取、解析、解压、成功和失败增加全流程可见反馈；JIT 改为实际探测 `MAP_JIT`。构建同时内置固定校验的 Kirikiroid2 1.3.9 iOS 配套 IPA，可在 KiriKiri 游戏详情中导出后通过 LiveContainer 或证书重签安装。
+
 ## 构建
 
 在 macOS 运行：

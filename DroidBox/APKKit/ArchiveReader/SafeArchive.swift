@@ -58,12 +58,15 @@ struct SafeArchive: Sendable {
         prefix: String,
         to root: URL,
         maximumPerFile: Int = 512 * 1024 * 1024,
-        stripRenPyAssetEscaping: Bool = false
+        stripRenPyAssetEscaping: Bool = false,
+        progress: (@Sendable (_ completed: Int, _ total: Int) -> Void)? = nil
     ) throws {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var extractedDestinations = Set<String>()
-        for item in entries where !item.directory && item.path.hasPrefix(prefix) {
+        let matching = entries.filter { !$0.directory && $0.path.hasPrefix(prefix) }
+        progress?(0, matching.count)
+        for (index, item) in matching.enumerated() {
             try Task.checkCancellation()
             var relative = String(item.path.dropFirst(prefix.count))
             if stripRenPyAssetEscaping {
@@ -86,6 +89,9 @@ struct SafeArchive: Sendable {
                 destination: destination,
                 maximumSize: UInt(maximumPerFile)
             )
+            if index % 25 == 0 || index + 1 == matching.count {
+                progress?(index + 1, matching.count)
+            }
         }
     }
     static func unescapeRenPyAssetPath(_ path: String) -> String {

@@ -53,8 +53,8 @@ enum CompatibilityAnalyzer {
         if engine.engine == .kirikiri {
             issues.append(.init(
                 severity: .error,
-                title: "缺少 KiriKiri 引擎",
-                detail: "这是 KiriKiri/Kirikiroid2 游戏数据包，不是 Android Runtime。当前 IPA 尚未嵌入可执行 XP3/TJS 的 iOS 引擎。"
+                title: "需要 KiriKiri 配套引擎",
+                detail: "这是 KiriKiri/Kirikiroid2 游戏数据包，不是 Android Runtime。DroidBox 会解包并保留数据；请从游戏详情导出内置的 Kirikiroid2 1.3.9 配套引擎 IPA，并用当前签名方式安装。"
             ))
         }
 

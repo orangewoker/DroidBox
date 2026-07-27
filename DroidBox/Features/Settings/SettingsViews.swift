@@ -24,11 +24,18 @@ struct RuntimeSettingsView: View {
                 }
                 Section("本机游戏引擎") {
                     Label("Ren'Py APK 直接使用内置 Ren'Py 8.4.1，不需要 Android Runtime。", systemImage: "checkmark.circle")
-                    Label("XP3/TJS ZIP 属于 KiriKiri 游戏数据，需要独立 KiriKiri 引擎。", systemImage: "exclamationmark.triangle")
+                    Label(
+                        Bundle.main.url(forResource: "Kirikiroid2-1.3.9", withExtension: "ipa", subdirectory: "EmbeddedRuntimes") == nil
+                            ? "KiriKiri 配套引擎包未嵌入"
+                            : "Kirikiroid2 1.3.9 配套引擎包已嵌入",
+                        systemImage: "shippingbox"
+                    )
                 }
                 Section("JIT") {
                     LabeledContent("状态", value: environment.diagnostics.jitText)
                     Button("重新检测", systemImage: "arrow.clockwise") { environment.runtimeManager.probeJIT() }
+                    Text("这里检测的是当前进程能否实际创建 MAP_JIT 可执行内存，不再用普通 RW→RX 内存切换推测。Ren'Py 与 KiriKiri 数据导入不依赖 JIT。")
+                        .font(.footnote).foregroundStyle(.secondary)
                     if environment.runtimeManager.jitStatus != .available {
                         Text("Android VM 可尝试无 JIT 模式,但速度会非常慢。快速运行路径不受影响。")
                             .font(.footnote).foregroundStyle(.secondary)

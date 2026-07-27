@@ -13,8 +13,28 @@ struct RootView: View {
             SettingsView().tabItem{Label("设置",systemImage:"gearshape")}.tag(3)
         }
         .sheet(item:$environment.presentedPlayer){game in PlayerContainerView(game:game)}
-        .overlay(alignment:.bottom){if environment.importer.isImporting{ImportProgressView().padding(.bottom,72)}}
-        .alert("导入失败",isPresented:Binding(get:{environment.importer.errorMessage != nil},set:{if !$0{environment.importer.clearError()}})){Button("好",role:.cancel){environment.importer.clearError()}}message:{Text(environment.importer.errorMessage ?? "")}
+        .sheet(
+            isPresented: Binding(
+                get: { environment.importer.isImporting },
+                set: { _ in }
+            )
+        ) {
+            ImportProgressSheet()
+                .environment(environment)
+                .interactiveDismissDisabled()
+        }
+        .alert(
+            item: Binding(
+                get: { environment.importer.notice },
+                set: { if $0 == nil { environment.importer.clearNotice() } }
+            )
+        ) { notice in
+            Alert(
+                title: Text(notice.title),
+                message: Text(notice.message),
+                dismissButton: .default(Text("好")) { environment.importer.clearNotice() }
+            )
+        }
     }
 }
 
@@ -39,7 +59,18 @@ private struct LibraryView:View {
                         Button{importing=true}label:{Image(systemName:"plus")}.accessibilityLabel("导入游戏")
                     }
                 }
-                .fileImporter(isPresented:$importing,allowedContentTypes:[UTType(filenameExtension:"apk") ?? .archive,.zip],allowsMultipleSelection:false){result in if case .success(let urls)=result,let url=urls.first{environment.importer.start(url:url)}}
+                .fileImporter(isPresented:$importing,allowedContentTypes:[.data,.archive,.zip],allowsMultipleSelection:false){result in
+                    switch result {
+                    case .success(let urls):
+                        guard let url=urls.first else {
+                            environment.importer.reportPickerFailure(CocoaError(.fileNoSuchFile))
+                            return
+                        }
+                        environment.importer.start(url:url)
+                    case .failure(let error):
+                        environment.importer.reportPickerFailure(error)
+                    }
+                }
         }
     }
     private var gridContent:some View{ScrollView{LazyVGrid(columns:[GridItem(.adaptive(minimum:150,maximum:220),spacing:16)],spacing:20){ForEach(games){GameTile(game:$0)}}.padding()}}
