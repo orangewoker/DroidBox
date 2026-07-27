@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 @MainActor @Observable
 final class AppEnvironment {
@@ -23,5 +24,55 @@ final class AppEnvironment {
     func open(_ url: URL) {
         if url.scheme == "droidbox", let raw=URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first(where:{$0.name=="url"})?.value, let file=URL(string:raw) { importer.start(url:file) }
         else if ["apk","zip"].contains(url.pathExtension.lowercased()) { importer.start(url:url) }
+    }
+
+    func scanImportDirectory(silentIfEmpty: Bool = false) {
+        guard !importer.isImporting else {
+            if !silentIfEmpty {
+                importer.reportNotice(title: "正在导入", message: "请等待当前任务完成。")
+            }
+            return
+        }
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: paths.importDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ))?
+        .filter { ["apk", "zip"].contains($0.pathExtension.lowercased()) }
+        .sorted {
+            let left = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let right = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return left > right
+        } ?? []
+
+        guard let first = files.first else {
+            if !silentIfEmpty {
+                importer.reportNotice(
+                    title: "Import 目录为空",
+                    message: "请把 APK 或 ZIP 放入“文件 → 我的 iPhone → DroidBox → Import”，然后再次扫描。"
+                )
+            }
+            return
+        }
+        if files.count > 1 {
+            importer.reportNotice(
+                title: "找到 \(files.count) 个游戏文件",
+                message: "将先导入最新文件：\(first.lastPathComponent)。完成后再次点击扫描即可导入下一个。"
+            )
+        }
+        importer.start(url: first)
+    }
+
+    func openImportDirectoryInFiles() {
+        guard let url = URL(string: "shareddocuments://") else { return }
+        UIApplication.shared.open(url, options: [:]) { [weak self] opened in
+            guard !opened else { return }
+            Task { @MainActor in
+                self?.importer.reportNotice(
+                    title: "无法打开“文件”",
+                    message: "请手动进入“文件 → 我的 iPhone → DroidBox → Import”。"
+                )
+            }
+        }
     }
 }

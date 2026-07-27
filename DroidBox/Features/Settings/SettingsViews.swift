@@ -34,7 +34,7 @@ struct RuntimeSettingsView: View {
                 Section("JIT") {
                     LabeledContent("状态", value: environment.diagnostics.jitText)
                     Button("重新检测", systemImage: "arrow.clockwise") { environment.runtimeManager.probeJIT() }
-                    Text("这里检测的是当前进程能否实际创建 MAP_JIT 可执行内存，不再用普通 RW→RX 内存切换推测。Ren'Py 与 KiriKiri 数据导入不依赖 JIT。")
+                    Text("检测会区分 MAP_JIT 权限和 StikDebug 调试器权限。只有具备 MAP_JIT，或进程确实处于 CS_DEBUGGED/P_TRACED 状态且能创建可执行内存时，才会显示可用。Ren'Py 与 KiriKiri 数据导入不依赖 JIT。")
                         .font(.footnote).foregroundStyle(.secondary)
                     if environment.runtimeManager.jitStatus != .available {
                         Text("Android VM 可尝试无 JIT 模式,但速度会非常慢。快速运行路径不受影响。")
@@ -93,6 +93,18 @@ struct SettingsView: View {
         @Bindable var settings = environment.settings
         NavigationStack {
             Form {
+                Section("本地导入目录") {
+                    LabeledContent("位置", value: "DroidBox/Import")
+                    Button("打开 DroidBox 文件夹", systemImage: "folder") {
+                        environment.openImportDirectoryInFiles()
+                    }
+                    Button("扫描 Import 目录", systemImage: "arrow.clockwise") {
+                        environment.scanImportDirectory()
+                    }
+                    Text("如果系统文件选择器或 LiveContainer 没有回调，可把 APK/ZIP 直接放进此目录，再回到 DroidBox 扫描。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Section("导入限制") {
                     Picker("单文件上限", selection: $settings.maximumFileSizeGB) {
                         ForEach(AppSettings.fileSizeOptions, id: \.self) { size in

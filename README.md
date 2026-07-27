@@ -31,6 +31,8 @@ DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库与运行器，最低系统�
 
 1.2.3 为文件选择、读取、解析、解压、成功和失败增加全流程可见反馈；JIT 改为实际探测 `MAP_JIT`。构建同时内置固定校验的 Kirikiroid2 1.3.9 iOS 配套 IPA，可在 KiriKiri 游戏详情中导出后通过 LiveContainer 或证书重签安装。
 
+1.2.4 不再使用在 SDL 手动托管窗口中丢失回调的 SwiftUI `fileImporter`，改为由长期存活的 UIKit `UIDocumentPickerDelegate` 直接接收结果，并以“打开原文件”模式避免选择 3 GB APK 时先发生无提示复制。应用启动时还会创建公开的 `DroidBox/Import` 目录，可从设置或游戏库菜单打开、扫描。JIT 检测同时支持 `MAP_JIT` 和 StikDebug 留下的 `CS_DEBUGGED`/`P_TRACED` 调试器路径。
+
 ## 构建
 
 在 macOS 运行：

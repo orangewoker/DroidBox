@@ -4,6 +4,12 @@
 
 确认文件扩展名为 APK/ZIP、归档未损坏且没有路径穿越、完全相同的重复条目或异常膨胀。Android APK 可以合法包含仅大小写不同的资源名，1.2.2 起不会再因此误拒绝整个 APK。默认单文件上限 8 GB。
 
+1.2.4 起右上角“+”使用 UIKit 文件选择器直接打开原文件，不再经过 SwiftUI `fileImporter`。如果所用容器仍阻止系统选择器回调，进入“文件 → 我的 iPhone → DroidBox → Import”放入 APK/ZIP，然后在 DroidBox 的游戏库菜单或设置中点击“扫描 Import 目录”。
+
+## StikDebug 启动后仍显示无 JIT
+
+1.2.4 会先实测 `MAP_JIT`；失败后继续检查当前进程的 `CS_DEBUGGED` 与 `P_TRACED` 状态，并在调试器路径下验证 RW→RX 转换。通过 StikDebug 启动时应显示“可用（StikDebug/调试器）”。如果 StikDebug 在 DroidBox 启动后才附加，回到“运行时”页面点击“重新检测”。
+
 ## KiriKiri/Kirikiroid2 ZIP 无法启动
 
 只包含 `.xp3` 与 `.tjs` 的 ZIP 是 KiriKiri 游戏数据包，不是 Android Runtime，也不是可直接安装的 APK。1.2.3 会正确识别、解压并保存在游戏库中。打开游戏详情，先导出内置的 Kirikiroid2 1.3.9 配套 IPA，用 LiveContainer 或证书重签安装，再使用“发送游戏 ZIP”交给配套引擎。

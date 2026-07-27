@@ -7,12 +7,25 @@ struct RuntimeManifest:Codable,Sendable { let id:String;let version:String;let a
 @MainActor @Observable
 final class RuntimeManager {
     private(set) var jitStatus:JITStatus = .unknown
+    private(set) var jitMethod = "尚未检测"
     private(set) var androidRuntimeValid=false
     private(set) var runtimeMessage="尚未导入 Android Runtime"
     let paths:AppPaths
     private var installedManifest: RuntimeManifest?
     init(paths:AppPaths){self.paths=paths;probeJIT();verifyInstalledRuntime()}
-    func probeJIT(){jitStatus=DBRuntimeProbe.canAllocateExecutableMemory() ? .available:.unavailable}
+    func probeJIT(){
+        switch DBRuntimeProbe.jitMode() {
+        case 1:
+            jitStatus = .available
+            jitMethod = "可用（MAP_JIT）"
+        case 2:
+            jitStatus = .available
+            jitMethod = "可用（StikDebug/调试器）"
+        default:
+            jitStatus = .unavailable
+            jitMethod = "不可用"
+        }
+    }
     func importRuntime(_ url:URL) async throws {
         let access=url.startAccessingSecurityScopedResource();defer{if access{url.stopAccessingSecurityScopedResource()}}
         let archive=try SafeArchive(url:url,maxExpandedBytes:32*1024*1024*1024,maxRatio:10)

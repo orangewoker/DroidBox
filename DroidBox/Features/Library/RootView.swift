@@ -42,7 +42,6 @@ private struct LibraryView:View {
     @Environment(AppEnvironment.self) private var environment
     @State private var search=""
     @State private var grid=true
-    @State private var importing=false
     @State private var sortNewest=true
     private var games:[GameRecord]{
         let filtered=environment.library.games.filter{search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) || ($0.packageName?.localizedCaseInsensitiveContains(search) ?? false)}
@@ -50,31 +49,49 @@ private struct LibraryView:View {
     }
     var body:some View{
         NavigationStack{
-            Group{if games.isEmpty{ContentUnavailableView("还没有游戏",systemImage:"shippingbox",description:Text("从“文件”导入 APK 或 ZIP。"))}else if grid{gridContent}else{listContent}}
+            Group{if games.isEmpty{EmptyLibraryView()}else if grid{gridContent}else{listContent}}
                 .navigationTitle("DroidBox").searchable(text:$search,prompt:"搜索游戏或包名")
                 .toolbar{
                     ToolbarItemGroup(placement:.topBarTrailing){
-                        Menu{Button(sortNewest ? "按名称排序":"按最近导入排序",systemImage:"arrow.up.arrow.down"){sortNewest.toggle()}}label:{Image(systemName:"arrow.up.arrow.down")}
+                        Menu{
+                            Button(sortNewest ? "按名称排序":"按最近导入排序",systemImage:"arrow.up.arrow.down"){sortNewest.toggle()}
+                            Divider()
+                            Button("打开 DroidBox 文件夹",systemImage:"folder"){environment.openImportDirectoryInFiles()}
+                            Button("扫描 Import 目录",systemImage:"arrow.clockwise"){environment.scanImportDirectory()}
+                        }label:{Image(systemName:"ellipsis.circle")}
                         Button{grid.toggle()}label:{Image(systemName:grid ? "list.bullet":"square.grid.2x2")}.accessibilityLabel("切换视图")
-                        Button{importing=true}label:{Image(systemName:"plus")}.accessibilityLabel("导入游戏")
-                    }
-                }
-                .fileImporter(isPresented:$importing,allowedContentTypes:[.data,.archive,.zip],allowsMultipleSelection:false){result in
-                    switch result {
-                    case .success(let urls):
-                        guard let url=urls.first else {
-                            environment.importer.reportPickerFailure(CocoaError(.fileNoSuchFile))
-                            return
-                        }
-                        environment.importer.start(url:url)
-                    case .failure(let error):
-                        environment.importer.reportPickerFailure(error)
+                        Button{DroidBoxFrontendHost.shared.presentGameImporter()}label:{Image(systemName:"plus")}.accessibilityLabel("导入游戏")
                     }
                 }
         }
     }
     private var gridContent:some View{ScrollView{LazyVGrid(columns:[GridItem(.adaptive(minimum:150,maximum:220),spacing:16)],spacing:20){ForEach(games){GameTile(game:$0)}}.padding()}}
     private var listContent:some View{List(games){GameRow(game:$0)}}
+}
+
+private struct EmptyLibraryView: View {
+    @Environment(AppEnvironment.self) private var environment
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("还没有游戏", systemImage: "shippingbox")
+        } description: {
+            Text("可以直接选择 APK/ZIP，也可以把文件放入 DroidBox/Import 后扫描。")
+        } actions: {
+            VStack(spacing: 10) {
+                Button("选择 APK 或 ZIP", systemImage: "doc.badge.plus") {
+                    DroidBoxFrontendHost.shared.presentGameImporter()
+                }
+                .buttonStyle(.borderedProminent)
+                Button("打开 DroidBox 文件夹", systemImage: "folder") {
+                    environment.openImportDirectoryInFiles()
+                }
+                Button("扫描 Import 目录", systemImage: "arrow.clockwise") {
+                    environment.scanImportDirectory()
+                }
+            }
+        }
+    }
 }
 
 struct GameArtwork:View{

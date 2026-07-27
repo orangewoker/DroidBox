@@ -62,8 +62,19 @@ final class ImportCoordinator {
         }
     }
 
+    func reportPickerCancelled() {
+        notice = ImportNotice(title: "已取消导入", message: "没有选择文件。")
+    }
+
+    func reportNotice(title: String, message: String) {
+        notice = ImportNotice(title: title, message: message)
+    }
+
     func start(url: URL) {
-        guard !isImporting else { return }
+        guard !isImporting else {
+            notice = ImportNotice(title: "正在导入", message: "请等待当前导入结束后再选择其他文件。")
+            return
+        }
         isImporting = true
         errorMessage = nil
         notice = nil
