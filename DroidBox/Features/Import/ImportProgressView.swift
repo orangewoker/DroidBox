@@ -66,7 +66,7 @@ struct ImportProgressSheet: View {
             Text(progressText)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-            Text("“+”选择的文件会先复制到 Import，再自动解析和解压。扫描 Import 会连续处理全部文件，成功后删除原文件，失败文件会保留。")
+            Text("“+”选择后会直接解析并解压到 Games。扫描 Import 会连续处理全部文件；完成或失败都会显示明确结果。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

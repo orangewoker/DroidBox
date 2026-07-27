@@ -69,6 +69,7 @@ final class J2MEPlayerController {
     private(set) var speedMultiplier = 1
     private(set) var hasQuickSnapshot = false
     private(set) var isSnapshotBusy = false
+    var isModifierPresented = false
 
     func attach(_ emulator: J2MEEmulatorView) {
         self.emulator = emulator
@@ -121,6 +122,50 @@ final class J2MEPlayerController {
         let success = await emulator.restoreQuickSnapshot()
         isSnapshotBusy = false
         return success
+    }
+
+    func toggleModifier() {
+        guard ready else { return }
+        isModifierPresented.toggle()
+    }
+
+    func modifierFirstScan(
+        type: ModifierValueType,
+        value: Double
+    ) async throws -> ModifierScanPage {
+        guard let emulator else { throw DataModifierError.runtimeUnavailable }
+        return try await emulator.modifierFirstScan(type: type, value: value)
+    }
+
+    func modifierRefine(
+        filter: ModifierFilter,
+        value: Double
+    ) async throws -> ModifierScanPage {
+        guard let emulator else { throw DataModifierError.runtimeUnavailable }
+        return try await emulator.modifierRefine(filter: filter, value: value)
+    }
+
+    func modifierRefresh() async throws -> ModifierScanPage {
+        guard let emulator else { throw DataModifierError.runtimeUnavailable }
+        return try await emulator.modifierRefresh()
+    }
+
+    func modifierWrite(
+        candidate: ModifierCandidate,
+        value: Double,
+        freeze: Bool
+    ) async throws -> ModifierScanPage {
+        guard let emulator else { throw DataModifierError.runtimeUnavailable }
+        return try await emulator.modifierWrite(
+            candidate: candidate,
+            value: value,
+            freeze: freeze
+        )
+    }
+
+    func modifierReset() async throws {
+        guard let emulator else { throw DataModifierError.runtimeUnavailable }
+        try await emulator.modifierReset()
     }
 }
 
@@ -278,6 +323,7 @@ final class J2MEEmulatorView: UIView {
     private var requestedResolution = PlayerResolution.gameDefault
     private var stretch = false
     private var pressed = Set<J2MEButton>()
+    private var modifierValueType = ModifierValueType.int32
 
     private lazy var webView: WKWebView = {
         let configuration = WKWebViewConfiguration()
@@ -406,6 +452,51 @@ final class J2MEEmulatorView: UIView {
             return false
         }
     }
+    func modifierFirstScan(
+        type: ModifierValueType,
+        value: Double
+    ) async throws -> ModifierScanPage {
+        modifierValueType = type
+        return try await modifierPage(
+            "window.j2meModifier.firstScan('\(type.rawValue)', \(Self.jsNumber(value)))",
+            type: type
+        )
+    }
+    func modifierRefine(
+        filter: ModifierFilter,
+        value: Double
+    ) async throws -> ModifierScanPage {
+        try await modifierPage(
+            "window.j2meModifier.refine('\(filter.rawValue)', \(Self.jsNumber(value)))",
+            type: modifierValueType
+        )
+    }
+    func modifierRefresh() async throws -> ModifierScanPage {
+        try await modifierPage(
+            "window.j2meModifier.refresh()",
+            type: modifierValueType
+        )
+    }
+    func modifierWrite(
+        candidate: ModifierCandidate,
+        value: Double,
+        freeze: Bool
+    ) async throws -> ModifierScanPage {
+        guard let address = candidate.address else {
+            throw DataModifierError.candidateMissing
+        }
+        modifierValueType = candidate.type
+        return try await modifierPage(
+            "window.j2meModifier.write('\(candidate.type.rawValue)', \(address), \(Self.jsNumber(value)), \(freeze))",
+            type: candidate.type
+        )
+    }
+    func modifierReset() async throws {
+        _ = try await modifierPage(
+            "window.j2meModifier.reset()",
+            type: modifierValueType
+        )
+    }
     func save() {
         evaluate("""
         if (window.j2meAPI && window.j2meAPI.getSaveData) {
@@ -454,6 +545,53 @@ final class J2MEEmulatorView: UIView {
         }
     }
 
+    private func modifierPage(
+        _ expression: String,
+        type: ModifierValueType
+    ) async throws -> ModifierScanPage {
+        guard runtimeReady else { throw DataModifierError.runtimeUnavailable }
+        let raw = try await webView.callAsyncJavaScript(
+            """
+            if (!window.j2meModifier) throw new Error('Data modifier unavailable');
+            return \(expression);
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        return try Self.decodeModifierPage(raw, type: type)
+    }
+
+    private static func decodeModifierPage(
+        _ raw: Any,
+        type: ModifierValueType
+    ) throws -> ModifierScanPage {
+        guard let payload = raw as? [String: Any],
+              let rows = payload["results"] as? [[String: Any]]
+        else { throw DataModifierError.invalidResponse }
+
+        let candidates = rows.compactMap { row -> ModifierCandidate? in
+            guard let address = (row["address"] as? NSNumber)?.intValue,
+                  let value = (row["value"] as? NSNumber)?.doubleValue
+            else { return nil }
+            return ModifierCandidate(
+                id: row["id"] as? String ?? "\(type.rawValue):\(address)",
+                type: type,
+                address: address,
+                source: nil,
+                offset: nil,
+                endian: nil,
+                value: value,
+                isFrozen: (row["frozen"] as? NSNumber)?.boolValue ?? false
+            )
+        }
+        return ModifierScanPage(
+            total: (payload["total"] as? NSNumber)?.intValue ?? candidates.count,
+            truncated: (payload["truncated"] as? NSNumber)?.boolValue ?? false,
+            results: candidates
+        )
+    }
+
     fileprivate func message(_ body: Any) {
         guard let payload = body as? [String: Any],
               let type = payload["type"] as? String else { return }
@@ -486,6 +624,15 @@ final class J2MEEmulatorView: UIView {
         guard let data = try? JSONSerialization.data(withJSONObject: [value]),
               let array = String(data: data, encoding: .utf8) else { return "\"\"" }
         return String(array.dropFirst().dropLast())
+    }
+
+    private static func jsNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        return String(
+            format: "%.17g",
+            locale: Locale(identifier: "en_US_POSIX"),
+            value
+        )
     }
 
     private static func fontSize(width: Int, height: Int) -> Int {

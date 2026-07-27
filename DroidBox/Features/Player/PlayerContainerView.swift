@@ -63,6 +63,7 @@ struct PlayerContainerView: View {
             }
         }
         .statusBarHidden()
+        .persistentSystemOverlays(.hidden)
         .sheet(isPresented: $settingsPresented) {
             PlayerSettingsView(game: game) {
                 settingsPresented = false

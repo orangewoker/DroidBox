@@ -82,40 +82,15 @@ final class ImportCoordinator {
         )
     }
 
-    /// The right-top “+” uses the same path as Documents/Import: copy the picked
-    /// file into Import first, then parse and extract that application-owned copy.
-    func startPickedURL(_ url: URL, securityAccessAlreadyActive: Bool) {
-        guard begin(total: 1) else {
-            if securityAccessAlreadyActive { url.stopAccessingSecurityScopedResource() }
-            return
-        }
-        let paths = library.paths
-        let maximumBytes = maximumFileSize
-        currentFileName = url.lastPathComponent
-
-        task = Task {
-            defer { isImporting = false }
-            do {
-                let local = try await Self.stagePickedFile(
-                    url,
-                    importDirectory: paths.importDirectory,
-                    maximumFileSize: maximumBytes,
-                    securityAccessAlreadyActive: securityAccessAlreadyActive
-                ) { [weak self] value in
-                    self?.set(.copying, value * 0.20)
-                }
-                let result = await runBatch(
-                    [.init(url: local, deleteAfterSuccess: true, securityAccessAlreadyActive: false)],
-                    initialProgress: 0.20
-                )
-                if Task.isCancelled { finishCancelled() }
-                else { finish(result) }
-            } catch is CancellationError {
-                finishCancelled()
-            } catch {
-                finishFailure(error.localizedDescription)
-            }
-        }
+    /// URLs returned by UIDocumentPicker `asCopy: true` are app-owned temporary
+    /// files. Parse/extract them straight into Games and clean each copy only
+    /// after the library transaction succeeds.
+    func startPickedURLs(_ urls: [URL]) {
+        startBatch(
+            urls: urls,
+            deleteSourcesAfterSuccess: true,
+            securityAccessForFirstURL: false
+        )
     }
 
     /// Imports every supported file currently in Documents/Import. A file is
@@ -238,7 +213,7 @@ final class ImportCoordinator {
                 title: "导入完成（\(result.games.count) 个）",
                 message: names.isEmpty
                     ? "没有找到可导入的游戏。"
-                    : "\(names) 已加入游戏库；Import 中的原文件已自动删除。"
+                    : "\(names) 已解压到 Games 并加入游戏库；临时源文件已清理。"
             )
         } else if result.games.isEmpty {
             let details = result.failures
@@ -249,7 +224,7 @@ final class ImportCoordinator {
             let details = result.failures.map(\.file).joined(separator: "、")
             notice = ImportNotice(
                 title: "已导入 \(result.games.count) 个，失败 \(result.failures.count) 个",
-                message: "失败文件仍保留在 Import：\(details)"
+                message: "失败文件未删除，便于重新处理：\(details)"
             )
         }
     }
@@ -263,69 +238,6 @@ final class ImportCoordinator {
         errorMessage = message
         notice = ImportNotice(title: "导入失败", message: message)
     }
-
-
-    private nonisolated static func stagePickedFile(
-        _ source: URL,
-        importDirectory: URL,
-        maximumFileSize: UInt64,
-        securityAccessAlreadyActive: Bool,
-        progress update: @escaping @MainActor @Sendable (Double) -> Void
-    ) async throws -> URL {
-        let access = securityAccessAlreadyActive || source.startAccessingSecurityScopedResource()
-        defer {
-            if access { source.stopAccessingSecurityScopedResource() }
-        }
-
-        let standardizedImport = importDirectory.standardizedFileURL
-        if source.deletingLastPathComponent().standardizedFileURL == standardizedImport {
-            await update(1)
-            return source
-        }
-
-        let values = try source.resourceValues(forKeys: [.fileSizeKey])
-        let totalBytes = UInt64(values.fileSize ?? 0)
-        guard totalBytes <= maximumFileSize else { throw DroidBoxError.fileTooLarge }
-
-        let extensionName = source.pathExtension.lowercased()
-        guard ["apk", "zip", "jar"].contains(extensionName) else {
-            throw DroidBoxError.unsupported("仅支持 APK、ZIP 和 JAR 游戏文件。")
-        }
-
-        let baseName = source.deletingPathExtension().lastPathComponent
-        var destination = importDirectory.appending(path: source.lastPathComponent)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            destination = importDirectory.appending(
-                path: "\(baseName)-\(UUID().uuidString.prefix(8)).\(extensionName)"
-            )
-        }
-        let temporary = importDirectory.appending(path: ".incoming-\(UUID().uuidString)")
-
-        do {
-            FileManager.default.createFile(atPath: temporary.path, contents: nil)
-            let input = try FileHandle(forReadingFrom: source)
-            let output = try FileHandle(forWritingTo: temporary)
-            defer {
-                try? input.close()
-                try? output.close()
-            }
-            var copied: UInt64 = 0
-            while let chunk = try input.read(upToCount: 8 * 1024 * 1024), !chunk.isEmpty {
-                try Task.checkCancellation()
-                try output.write(contentsOf: chunk)
-                copied += UInt64(chunk.count)
-                await update(totalBytes > 0 ? min(1, Double(copied) / Double(totalBytes)) : 0.5)
-            }
-            try output.synchronize()
-            try FileManager.default.moveItem(at: temporary, to: destination)
-            await update(1)
-            return destination
-        } catch {
-            try? FileManager.default.removeItem(at: temporary)
-            throw error
-        }
-    }
-
     /// Runs on the generic executor so enumerating and extracting a multi-gigabyte APK
     /// cannot freeze SwiftUI's main actor.
     private nonisolated static func importFile(

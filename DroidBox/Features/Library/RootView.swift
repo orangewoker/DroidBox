@@ -12,7 +12,10 @@ struct RootView: View {
             DiagnosticsView().tabItem{Label("诊断",systemImage:"stethoscope")}.tag(2)
             SettingsView().tabItem{Label("设置",systemImage:"gearshape")}.tag(3)
         }
-        .sheet(item:$environment.presentedPlayer){game in PlayerContainerView(game:game)}
+        .fullScreenCover(item: $environment.presentedPlayer) { game in
+            PlayerContainerView(game: game)
+                .environment(environment)
+        }
         .safeAreaInset(edge: .bottom) {
             if environment.importer.isImporting {
                 ImportProgressView()

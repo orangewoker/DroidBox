@@ -25,7 +25,7 @@ final class AppEnvironment {
         if url.scheme == "droidbox", let raw=URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first(where:{$0.name=="url"})?.value, let file=URL(string:raw) { importer.start(url:file) }
         else if ["apk","zip","jar"].contains(url.pathExtension.lowercased()) {
             let securityAccess = url.startAccessingSecurityScopedResource()
-            importer.startPickedURL(url, securityAccessAlreadyActive: securityAccess)
+            importer.start(url: url, securityAccessAlreadyActive: securityAccess)
         }
     }
 

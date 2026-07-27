@@ -45,9 +45,9 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
 
     /// SwiftUI's fileImporter is presented through SDL's manually hosted scene and
     /// did not reliably deliver its completion callback on device. Present UIKit's
-    /// picker directly and acquire the security scope before the delegate returns.
-    /// The selected file is streamed into Documents/Import with visible progress
-    /// before the normal Import-directory pipeline processes it.
+    /// picker directly. `asCopy: true` asks the Files provider for an app-owned
+    /// temporary copy, so tapping “打开” can immediately parse/extract it into
+    /// Games without an intermediate Documents/Import staging step.
     func presentGameImporter() {
         guard let environment else { return }
         guard !environment.importer.isImporting else {
@@ -70,10 +70,10 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
         }
         let picker = UIDocumentPickerViewController(
             forOpeningContentTypes: [.data],
-            asCopy: false
+            asCopy: true
         )
         picker.delegate = self
-        picker.allowsMultipleSelection = false
+        picker.allowsMultipleSelection = true
         picker.shouldShowFileExtensions = true
         activeDocumentPicker = picker
         presenter.present(picker, animated: true)
@@ -84,26 +84,22 @@ final class DroidBoxFrontendHost: NSObject, UIDocumentPickerDelegate {
         didPickDocumentsAt urls: [URL]
     ) {
         activeDocumentPicker = nil
-        guard let url = urls.first else {
+        guard !urls.isEmpty else {
             environment?.importer.reportPickerCancelled()
             return
         }
         let supported = ["apk", "zip", "jar"]
-        guard supported.contains(url.pathExtension.lowercased()) else {
+        guard urls.allSatisfy({ supported.contains($0.pathExtension.lowercased()) }) else {
             environment?.importer.reportNotice(
                 title: "不支持这个文件",
                 message: "请选择 .apk、.zip 或 .jar 游戏文件。"
             )
             return
         }
-        // Do not call dismiss here: UIDocumentPicker dismisses itself. Waiting for
-        // a second dismissal completion was the reason tapping “打开” produced no
-        // import and no feedback on device.
-        let securityAccess = url.startAccessingSecurityScopedResource()
-        environment?.importer.startPickedURL(
-            url,
-            securityAccessAlreadyActive: securityAccess
-        )
+        // UIDocumentPicker dismisses itself. The returned URLs are app-owned
+        // copies, so import them directly and remove those temporary copies only
+        // after each game has been committed to the library.
+        environment?.importer.startPickedURLs(urls)
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {

@@ -16,8 +16,12 @@ struct ManicJ2MESkinView: View {
                 height: proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
             )
             let layout = ManicSkinLayout.layout(for: fullSize)
-            let scaleX = fullSize.width / layout.designSize.width
-            let scaleY = fullSize.height / layout.designSize.height
+            let scale = min(
+                fullSize.width / layout.designSize.width,
+                fullSize.height / layout.designSize.height
+            )
+            let horizontalInset = (fullSize.width - layout.designSize.width * scale) / 2
+            let verticalInset = (fullSize.height - layout.designSize.height * scale) / 2
 
             ZStack(alignment: .topLeading) {
                 Color.black
@@ -52,11 +56,41 @@ struct ManicJ2MESkinView: View {
                     }
                 }
                 .frame(width: layout.designSize.width, height: layout.designSize.height)
-                .scaleEffect(x: scaleX, y: scaleY, anchor: .topLeading)
+                .scaleEffect(scale, anchor: .topLeading)
                 .frame(width: fullSize.width, height: fullSize.height, alignment: .topLeading)
+                .offset(x: horizontalInset, y: verticalInset)
 
-                Button(action: onSettings) {
-                    Image(systemName: "gearshape.fill")
+                if controller.isModifierPresented {
+                    let isLandscape = fullSize.width > fullSize.height
+                    let panelWidth = isLandscape
+                        ? min(fullSize.width * 0.62, 520)
+                        : fullSize.width - 24
+                    let panelHeight = isLandscape
+                        ? fullSize.height - 28
+                        : min(fullSize.height * 0.58, 520)
+
+                    DataModifierView(controller: controller)
+                        .frame(width: panelWidth, height: panelHeight)
+                        .padding(.bottom, 10)
+                        .frame(
+                            width: fullSize.width,
+                            height: fullSize.height,
+                            alignment: .bottom
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(4)
+                }
+
+                Menu {
+                    Button(action: onSettings) {
+                        Label("游戏设置", systemImage: "gearshape.fill")
+                    }
+                    Button(action: controller.toggleModifier) {
+                        Label("数据修改器", systemImage: "wrench.and.screwdriver.fill")
+                    }
+                    .disabled(!controller.ready)
+                } label: {
+                    Image(systemName: "wrench.and.screwdriver.fill")
                         .font(.system(size: 23, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 54, height: 54)
@@ -66,7 +100,7 @@ struct ManicJ2MESkinView: View {
                 }
                 .padding(.top, max(proxy.safeAreaInsets.top + 8, 18))
                 .padding(.leading, 16)
-                .accessibilityLabel("游戏设置")
+                .accessibilityLabel("游戏设置与数据修改器")
                 .zIndex(5)
 
                 Button(action: onExit) {
@@ -83,6 +117,7 @@ struct ManicJ2MESkinView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .zIndex(5)
             }
+            .animation(.easeInOut(duration: 0.22), value: controller.isModifierPresented)
             .frame(width: fullSize.width, height: fullSize.height)
             .offset(x: -proxy.safeAreaInsets.leading, y: -proxy.safeAreaInsets.top)
         }
