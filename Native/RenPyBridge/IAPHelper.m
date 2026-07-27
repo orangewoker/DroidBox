@@ -104,7 +104,7 @@ static UIAlertController *DroidBoxStoreAlert;
             break;
         case SKPaymentTransactionStatePurchasing:
             break;
-        @unknown default:
+        default:
             self.finished = 1;
             break;
         }
