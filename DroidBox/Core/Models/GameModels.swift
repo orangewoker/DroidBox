@@ -2,12 +2,13 @@ import Foundation
 
 enum SourceType: String, Codable, CaseIterable, Sendable { case apk, zip }
 enum GameEngine: String, Codable, CaseIterable, Sendable {
-    case android, renpy7, renpy8, rpgMakerMV, rpgMakerMZ, unity, godot, libgdx, unknown
+    case android, renpy7, renpy8, kirikiri, rpgMakerMV, rpgMakerMZ, unity, godot, libgdx, unknown
     var displayName: String {
         switch self {
         case .android: "Android"
         case .renpy7: "Ren'Py 7"
         case .renpy8: "Ren'Py 8"
+        case .kirikiri: "KiriKiri"
         case .rpgMakerMV: "RPG Maker MV"
         case .rpgMakerMZ: "RPG Maker MZ"
         case .unity: "Unity"
@@ -102,4 +103,3 @@ enum DroidBoxError: LocalizedError, Sendable {
         }
     }
 }
-

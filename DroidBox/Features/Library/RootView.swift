@@ -14,7 +14,7 @@ struct RootView: View {
         }
         .sheet(item:$environment.presentedPlayer){game in PlayerContainerView(game:game)}
         .overlay(alignment:.bottom){if environment.importer.isImporting{ImportProgressView().padding(.bottom,72)}}
-        .alert("导入失败",isPresented:Binding(get:{environment.importer.errorMessage != nil},set:{if !$0{}})){Button("好",role:.cancel){}}message:{Text(environment.importer.errorMessage ?? "")}
+        .alert("导入失败",isPresented:Binding(get:{environment.importer.errorMessage != nil},set:{if !$0{environment.importer.clearError()}})){Button("好",role:.cancel){environment.importer.clearError()}}message:{Text(environment.importer.errorMessage ?? "")}
     }
 }
 
@@ -49,7 +49,7 @@ private struct LibraryView:View {
 struct GameArtwork:View{
     let game:GameRecord
     var body:some View{ZStack{Rectangle().fill(Color(uiColor:.secondarySystemBackground));if let path=game.iconPath,let image=UIImage(contentsOfFile:path){Image(uiImage:image).resizable().scaledToFit().padding(16)}else{Image(systemName:icon).font(.system(size:44,weight:.light)).foregroundStyle(.tint)}}.aspectRatio(4/3,contentMode:.fit).clipShape(.rect(cornerRadius:6))}
-    private var icon:String{switch game.engine{case .rpgMakerMV,.rpgMakerMZ:"globe";case .renpy7,.renpy8:"text.book.closed";default:"gamecontroller"}}
+    private var icon:String{switch game.engine{case .rpgMakerMV,.rpgMakerMZ:"globe";case .renpy7,.renpy8,.kirikiri:"text.book.closed";default:"gamecontroller"}}
 }
 private struct GameTile:View{
     let game:GameRecord

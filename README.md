@@ -7,7 +7,7 @@ DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库与运行器，最低系统�
 ## 功能
 
 - 安全导入 APK/ZIP，解析 Binary XML Manifest 与 `resources.arsc`
-- 识别 ABI、Ren'Py、RPG Maker、Unity、Godot 与 LibGDX
+- 识别 ABI、Ren'Py、KiriKiri、RPG Maker、Unity、Godot 与 LibGDX
 - Ren'Py 8.4.1 / Python 3.12 原生运行，支持 RAPT 的 `x-` 路径还原
 - 大型 Ren'Py APK 直接解包，不额外保留 APK 副本
 - RPG Maker MV/MZ 通过隔离 URL Scheme 的 WebKit 快速路径运行
@@ -26,6 +26,8 @@ DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库与运行器，最低系统�
 - 媒体：WebP、MP3、WAV、WebM
 
 该包进入 Ren'Py 原生快速路径，不启动完整 Android 虚拟机。
+
+1.2.2 修复该 APK 中 `res/Ms.png` 与 `res/mS.png` 仅大小写不同而被误判为重复条目的问题。ZIP 规范及 Android 资源路径区分大小写；DroidBox 现在只拒绝完全相同的归档路径，并仍会在真正解压时阻止两个条目覆盖同一目标文件。
 
 ## 构建
 

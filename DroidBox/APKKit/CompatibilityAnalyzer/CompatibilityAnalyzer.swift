@@ -50,6 +50,13 @@ enum CompatibilityAnalyzer {
                 detail: "此引擎仅提供实验兼容，图形性能可能不足。"
             ))
         }
+        if engine.engine == .kirikiri {
+            issues.append(.init(
+                severity: .error,
+                title: "缺少 KiriKiri 引擎",
+                detail: "这是 KiriKiri/Kirikiroid2 游戏数据包，不是 Android Runtime。当前 IPA 尚未嵌入可执行 XP3/TJS 的 iOS 引擎。"
+            ))
+        }
 
         if engine.engine == .renpy8, let profile = RenPyPackageAnalyzer.analyze(entries: entries) {
             if !profile.hasPrivateRuntimeArchive || !profile.hasCommonAssets {

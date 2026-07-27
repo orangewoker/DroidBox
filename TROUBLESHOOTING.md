@@ -2,7 +2,11 @@
 
 ## 无法导入
 
-确认文件扩展名为 APK/ZIP、归档未损坏且没有路径穿越、重复条目或异常膨胀。默认单文件上限 8 GB。
+确认文件扩展名为 APK/ZIP、归档未损坏且没有路径穿越、完全相同的重复条目或异常膨胀。Android APK 可以合法包含仅大小写不同的资源名，1.2.2 起不会再因此误拒绝整个 APK。默认单文件上限 8 GB。
+
+## KiriKiri/Kirikiroid2 ZIP 无法启动
+
+只包含 `.xp3` 与 `.tjs` 的 ZIP 是 KiriKiri 游戏数据包，不是 Android Runtime，也不是可直接安装的 APK。1.2.2 会正确识别并保存在游戏库中，但在嵌入独立 KiriKiri iOS 引擎前会禁用“启动”按钮。
 
 ## Ren'Py 游戏版本不匹配
 
@@ -10,7 +14,7 @@ Full Runtime 当前固定为 Ren'Py 8.4.1 / Python 3.12。APK 应包含 `assets/
 
 ## Android Runtime 校验失败
 
-检查 ZIP 根目录的 `runtime.json`,`architecture` 必须为 `arm64`,`sha256` 必须是 `system.qcow2` 的 SHA-256。
+仅在 IPA 已嵌入 QEMU Core 时才可导入。ZIP 根目录应有 `runtime.json`，`architecture` 必须为 `arm64`，`sha256` 必须是 `system.qcow2` 的 SHA-256。项目当前没有发布可供下载的 Android Runtime 镜像。
 
 ## QEMU Core 未嵌入
 

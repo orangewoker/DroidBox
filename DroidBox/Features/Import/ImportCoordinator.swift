@@ -34,6 +34,10 @@ final class ImportCoordinator {
         task?.cancel()
     }
 
+    func clearError() {
+        errorMessage = nil
+    }
+
     func start(url: URL) {
         guard !isImporting else { return }
         isImporting = true
@@ -182,13 +186,13 @@ final class ImportCoordinator {
                 originalFilePath = ""
                 runtimeProfileID = RenPyPackageProfile.bundledRuntimeVersion
 
-            case .androidVM:
+            case .androidVM, .unavailable:
                 await update(.copying, 0.78)
                 let local = sourceDirectory.appending(path: source.lastPathComponent)
                 try FileManager.default.copyItem(at: source, to: local)
                 originalFilePath = local.path
 
-            case .automatic, .unavailable:
+            case .automatic:
                 break
             }
 

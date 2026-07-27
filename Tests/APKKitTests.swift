@@ -4,6 +4,7 @@ import XCTest
 final class APKKitTests:XCTestCase{
     func testSafePaths(){XCTAssertTrue(SafeArchive.isSafe("assets/www/index.html"));XCTAssertFalse(SafeArchive.isSafe("../escape"));XCTAssertFalse(SafeArchive.isSafe("/absolute"));XCTAssertFalse(SafeArchive.isSafe("C:/escape"))}
     func testEngineDetection(){let result=EngineDetector.detect(paths:["assets/www/index.html","assets/www/js/rmmz_core.js","assets/www/data/System.json"]);XCTAssertEqual(result.engine,.rpgMakerMZ);XCTAssertGreaterThan(result.confidence,0.5)}
+    func testKiriKiriDetection(){let result=EngineDetector.detect(paths:["patch.tjs","鸑鷟：摩耶之纱.xp3"]);XCTAssertEqual(result.engine,.kirikiri);XCTAssertGreaterThan(result.confidence,0.8)}
     func testABIAnalysis(){XCTAssertEqual(ABIAnalyzer.analyze(paths:["lib/arm64-v8a/libgame.so"]),[.arm64]);XCTAssertEqual(ABIAnalyzer.analyze(paths:["classes.dex"]),[.javaOnly])}
     func testRenPyAndroidAssetPathUnescaping() {
         XCTAssertEqual(

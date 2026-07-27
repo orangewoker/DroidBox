@@ -10,8 +10,21 @@ struct RuntimeSettingsView: View {
         NavigationStack {
             List {
                 Section("Android Runtime") {
-                    LabeledContent("状态", value: environment.runtimeManager.runtimeMessage)
+                    LabeledContent(
+                        "状态",
+                        value: DBQEMUBridge.coreBundled
+                            ? environment.runtimeManager.runtimeMessage
+                            : "不可用（QEMU Core 未嵌入）"
+                    )
                     Button("导入 Runtime ZIP", systemImage: "square.and.arrow.down") { importing = true }
+                        .disabled(!DBQEMUBridge.coreBundled)
+                    Text("Android Runtime 是供 QEMU 虚拟机启动 Android 客体系统的磁盘镜像，不是通用游戏插件。此 IPA 没有 QEMU Core，所以单独导入镜像也无法运行普通 Android APK。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Section("本机游戏引擎") {
+                    Label("Ren'Py APK 直接使用内置 Ren'Py 8.4.1，不需要 Android Runtime。", systemImage: "checkmark.circle")
+                    Label("XP3/TJS ZIP 属于 KiriKiri 游戏数据，需要独立 KiriKiri 引擎。", systemImage: "exclamationmark.triangle")
                 }
                 Section("JIT") {
                     LabeledContent("状态", value: environment.diagnostics.jitText)
@@ -30,7 +43,7 @@ struct RuntimeSettingsView: View {
                     )
                     LabeledContent("UTM/QEMU", value: DBQEMUBridge.coreBundled ? "已嵌入" : "未嵌入")
                     LabeledContent("显示通道", value: "VNC/RFB 3.8 (Raw, CopyRect)")
-                    Text("Runtime 数据与 QEMU 核心分开管理。当前源码保留固定版本的构建入口,完整核心需由 macOS CI 构建。")
+                    Text("Android Runtime 数据与 QEMU 核心是两项独立组件；两者缺一都不能启动 Android VM。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

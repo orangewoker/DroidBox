@@ -18,8 +18,8 @@ chmod +x scripts/*.sh
 `build-unsigned-ipa.sh` 使用 `CODE_SIGNING_ALLOWED=NO`，生成：
 
 - `dist/DroidBox-unsigned.ipa`
-- `dist/DroidBox-1.2.1-unsigned.ipa`
+- `dist/DroidBox-1.2.2-unsigned.ipa`
 - `dist/DroidBox-unsigned.sha256`
 - `dist/build-info.json`
 
-Windows 上将代码推送到 `ios` 分支后，`Build Unsigned IPA` 工作流会执行相同步骤并发布 `ios-v1.2.1` prerelease。
+Windows 上将代码推送到 `ios` 分支后，`Build Unsigned IPA` 工作流会执行相同步骤并发布 `ios-v1.2.2` prerelease。

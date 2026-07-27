@@ -20,7 +20,11 @@ struct SafeArchive: Sendable {
         for item in native {
             let path=item.path.replacingOccurrences(of:"\\",with:"/")
             guard Self.isSafe(path) else { throw DroidBoxError.unsafeArchiveEntry(path) }
-            let key=path.lowercased(); guard seen.insert(key).inserted else { throw DroidBoxError.duplicateEntry(path) }
+            // ZIP entry names are case-sensitive. Android packages may legitimately
+            // contain resources such as res/Ms.png and res/mS.png. Reject only an
+            // exact duplicate here; extraction separately protects case-insensitive
+            // destination filesystems from overwriting two entries onto one path.
+            guard seen.insert(path).inserted else { throw DroidBoxError.duplicateEntry(path) }
             totalCompressed += item.compressedSize; totalExpanded += item.uncompressedSize
             guard totalExpanded <= maxExpandedBytes else { throw DroidBoxError.excessiveExpansion }
             mapped.append(.init(
@@ -58,6 +62,7 @@ struct SafeArchive: Sendable {
     ) throws {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
+        var extractedDestinations = Set<String>()
         for item in entries where !item.directory && item.path.hasPrefix(prefix) {
             try Task.checkCancellation()
             var relative = String(item.path.dropFirst(prefix.count))
@@ -67,6 +72,10 @@ struct SafeArchive: Sendable {
             guard !relative.isEmpty else{continue}
             let destination=root.appending(path:relative).standardizedFileURL
             guard destination.path.hasPrefix(root.standardizedFileURL.path+"/") else{throw DroidBoxError.unsafeArchiveEntry(item.path)}
+            let destinationKey = destination.path.precomposedStringWithCanonicalMapping.lowercased()
+            guard extractedDestinations.insert(destinationKey).inserted else {
+                throw DroidBoxError.duplicateEntry(item.path)
+            }
             try DBZipArchive.extract(
                 localHeaderOffset: item.localHeaderOffset,
                 compressedSize: item.compressed,
