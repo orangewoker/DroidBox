@@ -30,7 +30,7 @@ private struct LibraryView:View {
     }
     var body:some View{
         NavigationStack{
-            Group{if games.isEmpty{ContentUnavailableView("还没有游戏",systemImage:"shippingbox",description:Text("从“文件”导入 APK 或 ZIP。"))}else if grid{gridContent}else{listContent}}
+            Group{if games.isEmpty{ContentUnavailableView("还没有游戏",systemImage:"shippingbox",description:Text("从"文件"导入 APK 或 ZIP。"))}else if grid{gridContent}else{listContent}}
                 .navigationTitle("DroidBox").searchable(text:$search,prompt:"搜索游戏或包名")
                 .toolbar{
                     ToolbarItemGroup(placement:.topBarTrailing){

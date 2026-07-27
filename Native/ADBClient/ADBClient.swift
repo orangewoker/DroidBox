@@ -7,12 +7,12 @@ enum ADBClientError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .notConnected: "ADB 尚未连接"
-        case .connectionFailed(let value): "ADB 连接失败：\(value)"
-        case .invalidPacket(let value): "ADB 协议数据无效：\(value)"
-        case .authenticationRequired: "Android Runtime 要求 ADB RSA 认证，当前未授权 DroidBox"
-        case .serviceRejected(let value): "ADB 服务拒绝请求：\(value)"
-        case .commandFailed(let value): "ADB 命令失败：\(value)"
-        case .fileProtocol(let value): "ADB 文件传输失败：\(value)"
+        case .connectionFailed(let value): "ADB 连接失败:\(value)"
+        case .invalidPacket(let value): "ADB 协议数据无效:\(value)"
+        case .authenticationRequired: "Android Runtime 要求 ADB RSA 认证,当前未授权 DroidBox"
+        case .serviceRejected(let value): "ADB 服务拒绝请求:\(value)"
+        case .commandFailed(let value): "ADB 命令失败:\(value)"
+        case .fileProtocol(let value): "ADB 文件传输失败:\(value)"
         }
     }
 }

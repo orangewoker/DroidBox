@@ -30,7 +30,7 @@ final class GameLibrary {
         let file = paths.libraryFile, backup = file.appendingPathExtension("bak")
         for candidate in [file, backup] where FileManager.default.fileExists(atPath: candidate.path) {
             do { games = try decoder.decode([GameRecord].self, from: Data(contentsOf: candidate)); return }
-            catch { lastError = "游戏库恢复失败：\(error.localizedDescription)" }
+            catch { lastError = "游戏库恢复失败:\(error.localizedDescription)" }
         }
     }
 

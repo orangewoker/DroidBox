@@ -3,51 +3,295 @@
 
 @implementation DBZipEntry @end
 
-typedef struct __attribute__((packed)) {
-    uint32_t signature; uint16_t versionMade, versionNeeded, flags, method, modTime, modDate;
-    uint32_t crc32, compressedSize, uncompressedSize; uint16_t nameLength, extraLength, commentLength, disk, intAttrs;
-    uint32_t extAttrs, localOffset;
-} DBCentralHeader;
+static NSString * const DBZipErrorDomain = @"DroidBox.Zip";
+static const NSUInteger DBCentralHeaderSize = 46;
+static const NSUInteger DBLocalHeaderSize = 30;
+
+static uint16_t DBReadUInt16(const uint8_t *bytes) {
+    return (uint16_t)bytes[0] | ((uint16_t)bytes[1] << 8);
+}
+
+static uint32_t DBReadUInt32(const uint8_t *bytes) {
+    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |
+        ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+}
+
+static BOOL DBFail(NSError **error, NSInteger code, NSString *message) {
+    if (error) {
+        *error = [NSError errorWithDomain:DBZipErrorDomain
+                                     code:code
+                                 userInfo:@{NSLocalizedDescriptionKey: message}];
+    }
+    return NO;
+}
+
+static NSInteger DBFindEOCD(NSData *tail) {
+    const uint8_t *bytes = tail.bytes;
+    if (tail.length < 22) return -1;
+    for (NSInteger index = (NSInteger)tail.length - 22; index >= 0; index--) {
+        if (DBReadUInt32(bytes + index) == 0x06054b50) return index;
+    }
+    return -1;
+}
 
 @implementation DBZipArchive
 + (NSArray<DBZipEntry *> *)entriesAtURL:(NSURL *)url error:(NSError **)error {
-    NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:url error:error]; if (!handle) return nil;
-    unsigned long long size = [handle seekToEndOfFile]; NSUInteger tailSize = (NSUInteger)MIN(size, 65557);
-    [handle seekToFileOffset:size-tailSize]; NSData *tail = [handle readDataToEndOfFile]; const uint8_t *bytes=tail.bytes;
-    NSInteger eocd=-1; for (NSInteger i=(NSInteger)tail.length-22;i>=0;i--) if (*(const uint32_t *)(bytes+i)==0x06054b50) { eocd=i; break; }
-    if (eocd<0) { if(error)*error=[NSError errorWithDomain:@"DroidBox.Zip" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Missing ZIP directory"}]; return nil; }
-    uint16_t count=*(const uint16_t *)(bytes+eocd+10); uint32_t offset=*(const uint32_t *)(bytes+eocd+16);
-    [handle seekToFileOffset:offset]; NSMutableArray *result=[NSMutableArray arrayWithCapacity:count];
-    for (NSUInteger i=0;i<count;i++) {
-        NSData *raw=[handle readDataOfLength:sizeof(DBCentralHeader)]; if(raw.length!=sizeof(DBCentralHeader)) return nil;
-        DBCentralHeader h; [raw getBytes:&h length:sizeof(h)]; if(h.signature!=0x02014b50) return nil;
-        NSData *nameData=[handle readDataOfLength:h.nameLength]; NSString *name=[[NSString alloc] initWithData:nameData encoding:NSUTF8StringEncoding];
-        [handle seekToFileOffset:handle.offsetInFile+h.extraLength+h.commentLength]; if(!name) continue;
-        DBZipEntry *entry=[DBZipEntry new]; entry.path=name; entry.compressedSize=h.compressedSize; entry.uncompressedSize=h.uncompressedSize; entry.directory=[name hasSuffix:@"/"]; [result addObject:entry];
+    NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:url error:error];
+    if (!handle) return nil;
+
+    unsigned long long fileSize = [handle seekToEndOfFile];
+    NSUInteger tailSize = (NSUInteger)MIN(fileSize, 65557);
+    [handle seekToFileOffset:fileSize - tailSize];
+    NSData *tail = [handle readDataToEndOfFile];
+    NSInteger eocd = DBFindEOCD(tail);
+    if (eocd < 0) {
+        [handle closeFile];
+        DBFail(error, 1, @"Missing ZIP directory");
+        return nil;
     }
-    [handle closeFile]; return result;
+
+    const uint8_t *end = (const uint8_t *)tail.bytes + eocd;
+    uint16_t diskNumber = DBReadUInt16(end + 4);
+    uint16_t directoryDisk = DBReadUInt16(end + 6);
+    uint16_t count = DBReadUInt16(end + 10);
+    uint32_t directorySize = DBReadUInt32(end + 12);
+    uint32_t directoryOffset = DBReadUInt32(end + 16);
+    if (diskNumber != 0 || directoryDisk != 0 ||
+        count == UINT16_MAX || directorySize == UINT32_MAX || directoryOffset == UINT32_MAX) {
+        [handle closeFile];
+        DBFail(error, 2, @"Multi-disk and ZIP64 archives are not supported");
+        return nil;
+    }
+    if ((uint64_t)directoryOffset + directorySize > fileSize) {
+        [handle closeFile];
+        DBFail(error, 3, @"ZIP directory lies outside the archive");
+        return nil;
+    }
+
+    [handle seekToFileOffset:directoryOffset];
+    NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
+    for (NSUInteger index = 0; index < count; index++) {
+        NSData *raw = [handle readDataOfLength:DBCentralHeaderSize];
+        if (raw.length != DBCentralHeaderSize) {
+            [handle closeFile];
+            DBFail(error, 4, @"Truncated ZIP directory");
+            return nil;
+        }
+        const uint8_t *header = raw.bytes;
+        if (DBReadUInt32(header) != 0x02014b50) {
+            [handle closeFile];
+            DBFail(error, 5, @"Invalid ZIP directory entry");
+            return nil;
+        }
+        uint16_t flags = DBReadUInt16(header + 8);
+        uint16_t method = DBReadUInt16(header + 10);
+        uint32_t crc = DBReadUInt32(header + 16);
+        uint32_t compressedSize = DBReadUInt32(header + 20);
+        uint32_t uncompressedSize = DBReadUInt32(header + 24);
+        uint16_t nameLength = DBReadUInt16(header + 28);
+        uint16_t extraLength = DBReadUInt16(header + 30);
+        uint16_t commentLength = DBReadUInt16(header + 32);
+        uint32_t localOffset = DBReadUInt32(header + 42);
+        if ((flags & 0x1) != 0) {
+            [handle closeFile];
+            DBFail(error, 6, @"Encrypted ZIP entries are not supported");
+            return nil;
+        }
+        NSData *nameData = [handle readDataOfLength:nameLength];
+        NSString *name = [[NSString alloc] initWithData:nameData encoding:NSUTF8StringEncoding];
+        [handle seekToFileOffset:handle.offsetInFile + extraLength + commentLength];
+        if (!name) continue;
+
+        DBZipEntry *entry = [DBZipEntry new];
+        entry.path = name;
+        entry.compressedSize = compressedSize;
+        entry.uncompressedSize = uncompressedSize;
+        entry.localHeaderOffset = localOffset;
+        entry.crc32 = crc;
+        entry.compressionMethod = method;
+        entry.directory = [name hasSuffix:@"/"];
+        [result addObject:entry];
+    }
+    [handle closeFile];
+    return result;
 }
 
 + (NSData *)dataForEntry:(NSString *)entry atURL:(NSURL *)url maximumSize:(NSUInteger)maximumSize error:(NSError **)error {
-    NSFileHandle *handle=[NSFileHandle fileHandleForReadingFromURL:url error:error]; if(!handle)return nil;
-    unsigned long long size=[handle seekToEndOfFile]; NSUInteger tailSize=(NSUInteger)MIN(size,65557); [handle seekToFileOffset:size-tailSize]; NSData *tail=[handle readDataToEndOfFile]; const uint8_t *b=tail.bytes; NSInteger e=-1;
-    for(NSInteger i=(NSInteger)tail.length-22;i>=0;i--)if(*(const uint32_t *)(b+i)==0x06054b50){e=i;break;} if(e<0)return nil;
-    uint16_t count=*(const uint16_t *)(b+e+10); uint32_t offset=*(const uint32_t *)(b+e+16); [handle seekToFileOffset:offset];
-    for(NSUInteger i=0;i<count;i++){
-        NSData *raw=[handle readDataOfLength:sizeof(DBCentralHeader)]; DBCentralHeader h; if(raw.length!=sizeof(h))break; [raw getBytes:&h length:sizeof(h)];
-        NSData *nd=[handle readDataOfLength:h.nameLength]; NSString *name=[[NSString alloc]initWithData:nd encoding:NSUTF8StringEncoding]; [handle seekToFileOffset:handle.offsetInFile+h.extraLength+h.commentLength];
-        if(![name isEqualToString:entry])continue; if(h.uncompressedSize>maximumSize)return nil; unsigned long long returnOffset=handle.offsetInFile;
-        [handle seekToFileOffset:h.localOffset]; NSData *local=[handle readDataOfLength:30]; const uint8_t *l=local.bytes; if(local.length<30||*(uint32_t *)l!=0x04034b50)return nil; uint16_t nl=*(uint16_t *)(l+26),xl=*(uint16_t *)(l+28); [handle seekToFileOffset:h.localOffset+30+nl+xl]; NSData *compressed=[handle readDataOfLength:h.compressedSize]; [handle seekToFileOffset:returnOffset];
-        if(h.method==0){[handle closeFile];return compressed;} if(h.method!=8)return nil;
-        NSMutableData *out=[NSMutableData dataWithLength:h.uncompressedSize]; z_stream s={0}; s.next_in=(Bytef *)compressed.bytes;s.avail_in=(uInt)compressed.length;s.next_out=out.mutableBytes;s.avail_out=(uInt)out.length;
-        if(inflateInit2(&s,-MAX_WBITS)!=Z_OK)return nil; int status=inflate(&s,Z_FINISH); inflateEnd(&s); [handle closeFile]; return status==Z_STREAM_END?out:nil;
+    NSArray<DBZipEntry *> *entries = [self entriesAtURL:url error:error];
+    if (!entries) return nil;
+    for (DBZipEntry *candidate in entries) {
+        if ([candidate.path isEqualToString:entry]) {
+            return [self dataForEntryAtOffset:candidate.localHeaderOffset
+                               compressedSize:candidate.compressedSize
+                             uncompressedSize:candidate.uncompressedSize
+                                        method:candidate.compressionMethod
+                                         crc32:candidate.crc32
+                                         atURL:url
+                                   maximumSize:maximumSize
+                                         error:error];
+        }
     }
-    [handle closeFile]; return nil;
+    DBFail(error, 7, [NSString stringWithFormat:@"ZIP entry not found: %@", entry]);
+    return nil;
+}
+
++ (NSData *)dataForEntryAtOffset:(uint64_t)localHeaderOffset
+                   compressedSize:(uint64_t)compressedSize
+                 uncompressedSize:(uint64_t)uncompressedSize
+                            method:(uint16_t)method
+                             crc32:(uint32_t)expectedCRC
+                             atURL:(NSURL *)url
+                       maximumSize:(NSUInteger)maximumSize
+                             error:(NSError **)error {
+    NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:url error:error];
+    if (!handle) return nil;
+    NSData *result = [self dataForEntryAtOffset:localHeaderOffset
+                                compressedSize:compressedSize
+                              uncompressedSize:uncompressedSize
+                                         method:method
+                                          crc32:expectedCRC
+                                     fileHandle:handle
+                                    maximumSize:maximumSize
+                                          error:error];
+    [handle closeFile];
+    return result;
+}
+
++ (NSData *)dataForEntryAtOffset:(uint64_t)localHeaderOffset
+                   compressedSize:(uint64_t)compressedSize
+                 uncompressedSize:(uint64_t)uncompressedSize
+                            method:(uint16_t)method
+                             crc32:(uint32_t)expectedCRC
+                        fileHandle:(NSFileHandle *)handle
+                       maximumSize:(NSUInteger)maximumSize
+                             error:(NSError **)error {
+    if (uncompressedSize > maximumSize || compressedSize > NSUIntegerMax ||
+        uncompressedSize > NSUIntegerMax || compressedSize > UINT_MAX ||
+        uncompressedSize > UINT_MAX) {
+        DBFail(error, 8, @"ZIP entry exceeds the configured size limit");
+        return nil;
+    }
+    unsigned long long fileSize = [handle seekToEndOfFile];
+    if (localHeaderOffset + DBLocalHeaderSize > fileSize) {
+        DBFail(error, 9, @"ZIP local header lies outside the archive");
+        return nil;
+    }
+    [handle seekToFileOffset:localHeaderOffset];
+    NSData *local = [handle readDataOfLength:DBLocalHeaderSize];
+    const uint8_t *header = local.bytes;
+    if (local.length != DBLocalHeaderSize || DBReadUInt32(header) != 0x04034b50) {
+        DBFail(error, 10, @"Invalid ZIP local header");
+        return nil;
+    }
+    uint16_t nameLength = DBReadUInt16(header + 26);
+    uint16_t extraLength = DBReadUInt16(header + 28);
+    uint64_t dataOffset = localHeaderOffset + DBLocalHeaderSize + nameLength + extraLength;
+    if (dataOffset + compressedSize > fileSize) {
+        DBFail(error, 11, @"Truncated ZIP entry data");
+        return nil;
+    }
+    [handle seekToFileOffset:dataOffset];
+    NSData *compressed = [handle readDataOfLength:(NSUInteger)compressedSize];
+    if (compressed.length != compressedSize) {
+        DBFail(error, 12, @"Truncated ZIP entry data");
+        return nil;
+    }
+
+    NSData *result = nil;
+    if (method == 0) {
+        if (compressedSize != uncompressedSize) {
+            DBFail(error, 13, @"Stored ZIP entry has inconsistent sizes");
+            return nil;
+        }
+        result = compressed;
+    } else if (method == 8) {
+        NSMutableData *output = [NSMutableData dataWithLength:(NSUInteger)uncompressedSize];
+        z_stream stream = {0};
+        stream.next_in = (Bytef *)compressed.bytes;
+        stream.avail_in = (uInt)compressed.length;
+        stream.next_out = output.mutableBytes;
+        stream.avail_out = (uInt)output.length;
+        if (inflateInit2(&stream, -MAX_WBITS) != Z_OK) {
+            DBFail(error, 14, @"Unable to initialize ZIP inflater");
+            return nil;
+        }
+        int status = inflate(&stream, Z_FINISH);
+        inflateEnd(&stream);
+        if (status != Z_STREAM_END || stream.total_out != uncompressedSize) {
+            DBFail(error, 15, @"Unable to inflate ZIP entry");
+            return nil;
+        }
+        result = output;
+    } else {
+        DBFail(error, 16, [NSString stringWithFormat:@"Unsupported ZIP compression method: %u", method]);
+        return nil;
+    }
+
+    uLong actualCRC = crc32(0L, Z_NULL, 0);
+    actualCRC = crc32(actualCRC, result.bytes, (uInt)result.length);
+    if ((uint32_t)actualCRC != expectedCRC) {
+        DBFail(error, 17, @"ZIP entry CRC check failed");
+        return nil;
+    }
+    return result;
 }
 
 + (BOOL)extractEntry:(NSString *)entry atURL:(NSURL *)url toURL:(NSURL *)destination maximumSize:(NSUInteger)maximumSize error:(NSError **)error {
-    NSData *data=[self dataForEntry:entry atURL:url maximumSize:maximumSize error:error]; if(!data)return NO;
-    [[NSFileManager defaultManager] createDirectoryAtURL:destination.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:error]; return [data writeToURL:destination options:NSDataWritingAtomic error:error];
+    NSData *data = [self dataForEntry:entry atURL:url maximumSize:maximumSize error:error];
+    if (!data) return NO;
+    if (![[NSFileManager defaultManager] createDirectoryAtURL:destination.URLByDeletingLastPathComponent
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:error]) return NO;
+    return [data writeToURL:destination options:NSDataWritingAtomic error:error];
+}
+
++ (BOOL)extractEntryAtOffset:(uint64_t)localHeaderOffset
+              compressedSize:(uint64_t)compressedSize
+            uncompressedSize:(uint64_t)uncompressedSize
+                       method:(uint16_t)method
+                        crc32:(uint32_t)crc32
+                        atURL:(NSURL *)url
+                        toURL:(NSURL *)destination
+                  maximumSize:(NSUInteger)maximumSize
+                        error:(NSError **)error {
+    NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:url error:error];
+    if (!handle) return NO;
+    BOOL result = [self extractEntryAtOffset:localHeaderOffset
+                              compressedSize:compressedSize
+                            uncompressedSize:uncompressedSize
+                                       method:method
+                                        crc32:crc32
+                                   fileHandle:handle
+                                        toURL:destination
+                                  maximumSize:maximumSize
+                                        error:error];
+    [handle closeFile];
+    return result;
+}
+
++ (BOOL)extractEntryAtOffset:(uint64_t)localHeaderOffset
+              compressedSize:(uint64_t)compressedSize
+            uncompressedSize:(uint64_t)uncompressedSize
+                       method:(uint16_t)method
+                        crc32:(uint32_t)crc32
+                   fileHandle:(NSFileHandle *)handle
+                        toURL:(NSURL *)destination
+                  maximumSize:(NSUInteger)maximumSize
+                        error:(NSError **)error {
+    NSData *data = [self dataForEntryAtOffset:localHeaderOffset
+                               compressedSize:compressedSize
+                             uncompressedSize:uncompressedSize
+                                        method:method
+                                         crc32:crc32
+                                    fileHandle:handle
+                                   maximumSize:maximumSize
+                                         error:error];
+    if (!data) return NO;
+    if (![[NSFileManager defaultManager] createDirectoryAtURL:destination.URLByDeletingLastPathComponent
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:error]) return NO;
+    return [data writeToURL:destination options:NSDataWritingAtomic error:error];
 }
 @end
-

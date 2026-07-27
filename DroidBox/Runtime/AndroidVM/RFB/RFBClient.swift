@@ -99,7 +99,7 @@ actor RFBClient {
     private func readFramebufferUpdate() async throws -> RFBFrame? {
         _ = try await stream.read(1)
         let rectangles = Int(beU16(try await stream.read(2)))
-        guard rectangles <= 4096 else { throw RFBError.protocolViolation("矩形数量异常：\(rectangles)") }
+        guard rectangles <= 4096 else { throw RFBError.protocolViolation("矩形数量异常:\(rectangles)") }
         var resized = false
         for _ in 0..<rectangles {
             let header = try await stream.read(12)

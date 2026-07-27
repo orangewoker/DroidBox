@@ -14,7 +14,7 @@ struct PlayerContainerView: View {
             case .web:
                 RPGMakerPlayerView(game: game).ignoresSafeArea()
             case .renpy:
-                UnavailableRuntimeView(title: "Ren'Py Runtime 尚未安装", detail: "请在运行时页面导入与此游戏匹配的 Ren'Py Runtime。")
+                RenPyLaunchView(game: game)
             case .androidVM:
                 if let vm { AndroidVMPlayerView(controller: vm, showSystemKeys: environment.settings.showSystemKeys) }
                 else { ProgressView().tint(.white) }
@@ -55,6 +55,33 @@ struct PlayerContainerView: View {
     private func close() {
         vm?.stop()
         dismiss()
+    }
+}
+
+@MainActor
+private struct RenPyLaunchView: View {
+    let game: GameRecord
+    @State private var failed = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            if failed {
+                Image(systemName: "externaldrive.badge.exclamationmark")
+                    .font(.largeTitle)
+                Text("Ren'Py Runtime 未嵌入")
+                    .font(.headline)
+                Text("请使用 Full Runtime 构建的 IPA。")
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView().tint(.white)
+                Text("正在启动 Ren'Py \(game.runtimeProfileID)")
+            }
+        }
+        .foregroundStyle(.white)
+        .task {
+            guard !DroidBoxFrontendHost.shared.launchRenPy(game) else { return }
+            failed = true
+        }
     }
 }
 

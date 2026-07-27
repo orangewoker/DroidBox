@@ -2,8 +2,8 @@ IPHONEOS_DEPLOYMENT_TARGET = 18.0
 SWIFT_VERSION = 6.0
 PRODUCT_BUNDLE_IDENTIFIER = com.droidbox.app
 PRODUCT_NAME = DroidBox
-MARKETING_VERSION = 1.1.0
-CURRENT_PROJECT_VERSION = 5
+MARKETING_VERSION = 1.2.0
+CURRENT_PROJECT_VERSION = 6
 TARGETED_DEVICE_FAMILY = 1,2
 SUPPORTED_PLATFORMS = iphoneos iphonesimulator
 SUPPORTS_MACCATALYST = NO
@@ -11,7 +11,15 @@ CODE_SIGN_STYLE = Automatic
 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
 GENERATE_INFOPLIST_FILE = NO
 INFOPLIST_FILE = Config/Info.plist
-OTHER_LDFLAGS = $(inherited) -lz
+RENPY_ROOT = $(SRCROOT)/Vendor/RenPy/Generated
+LIBRARY_SEARCH_PATHS = $(inherited)
+LIBRARY_SEARCH_PATHS[sdk=iphoneos*] = $(inherited) $(RENPY_ROOT)/prebuilt/release
+LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*] = $(inherited) $(RENPY_ROOT)/prebuilt/debug
+FRAMEWORK_SEARCH_PATHS = $(inherited)
+FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*] = $(inherited) $(RENPY_ROOT)/Frameworks/MetalANGLE.xcframework/ios-arm64_armv7
+FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*] = $(inherited) $(RENPY_ROOT)/Frameworks/MetalANGLE.xcframework/ios-arm64_i386_x86_64-simulator
+OTHER_LDFLAGS = $(inherited) -lrenpython -lrenpy -lpython3.12 -lassimp -lavformat -lavcodec -lswscale -lswresample -lavutil -lSDL2_image -lSDL2 -lavif -laom -lyuv -lturbojpeg -lpng16 -lwebp -lharfbuzz -lbrotlidec -lfribidi -lfreetype -lffi -lssl -lcrypto -llzma -lbz2 -lz -lstdc++ -framework MetalANGLE -framework AudioToolbox -framework AVFoundation -framework CoreGraphics -framework CoreMotion -framework CoreServices -framework GameController -framework ImageIO -framework QuartzCore -framework StoreKit -framework UIKit
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks
 CLANG_ENABLE_MODULES = YES
+CLANG_ENABLE_OBJC_ARC = YES
 SWIFT_OBJC_BRIDGING_HEADER = DroidBox/DroidBox-Bridging-Header.h

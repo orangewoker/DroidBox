@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DERIVED="$ROOT/build/DerivedData"
 DIST="$ROOT/dist"
+"$ROOT/scripts/prepare-renpy-runtime.sh"
 rm -rf "$DERIVED" "$DIST/Payload"
 mkdir -p "$DIST/Payload"
 

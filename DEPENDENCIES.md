@@ -1,16 +1,20 @@
 # 依赖
 
-基础 DroidBox 目标仅链接 Apple 系统框架：SwiftUI、WebKit、UniformTypeIdentifiers、CryptoKit、GameController（预留）和系统 zlib。
+## 已进入 Full Runtime 构建
 
-计划中的 Android VM 依赖固定如下，但尚未链接进应用目标：
-
-| 项目 | 固定版本 | 许可证 | 用途 |
+| 项目 | 固定版本 | 校验 | 用途 |
 |---|---|---|---|
-| UTM | tag `v5.0.3`, commit `e4a4c34b671284263fc69f81b607de494d7e9b65` | Apache-2.0 / GPL-2.0-or-later（按组件） | QEMUKit、显示、输入和 QEMU iOS 构建基础 |
-| QEMU | `10.0.2-utm`（UTM v5.0.3 patches） | GPL-2.0-or-later | ARM64 Android VM |
-| QEMUKit | commit `589765abff27a8764d58b1a90999a204ac09881e` | Apache-2.0 | QMP/生命周期设计参考 |
-| CocoaSpice | commit `52b1535824657354fc3089eab24f1827280f9143` | Apache-2.0 | SPICE 显示、输入和音频接入目标 |
-| LineageOS/AOSP QEMU runtime | `21.0-qemu-2026.07` 占位清单 | Apache-2.0 及相应开源许可证 | Android guest 镜像 |
-| Ren'Py | 7.x 与 8.x，版本待可复现构建确认 | MIT 及第三方许可证 | Ren'Py 快速路径 |
+| Ren'Py SDK | 8.4.1 | SHA-256 `b542062465b6a253f4286b0fd48b83dd578bd7b6282a52d4c1eaecbfe21f002d` | Python/Ren'Py 基础资源 |
+| Renios | 8.4.1 | SHA-256 `f631ccd21f6fdc22619882bf55d44653f402dfe832422d1eefa804cba1ee819f` | iOS arm64/Simulator 静态库、SDL2、FFmpeg、MetalANGLE |
 
-`scripts/fetch-qemu-deps.sh` 只拉取固定 UTM commit，并已通过 UTM 官方 GitHub 仓库校验。没有可验证产物时，构建脚本会失败并明确报告，而不是生成来源不明的二进制。
+`scripts/prepare-renpy-runtime.sh` 只从 Ren'Py 官方下载地址获取上述固定文件，校验通过后才生成构建目录。二进制不会提交到 Git。
+
+Renios 包含 MIT、LGPL 及其他第三方许可组件。分发 IPA 时必须保留 Ren'Py 官方许可清单要求的声明。
+
+## 尚未进入默认 IPA
+
+| 项目 | 固定版本 | 许可 | 用途 |
+|---|---|---|---|
+| UTM | v5.0.3 / `e4a4c34b671284263fc69f81b607de494d7e9b65` | Apache-2.0 / GPL-2.0-or-later | QEMU iOS 构建基础 |
+| QEMU | `10.0.2-utm` | GPL-2.0-or-later | ARM64 Android VM |
+| LineageOS/AOSP runtime | `21.0-qemu-2026.07` 占位 | Apache-2.0 等 | Android guest |

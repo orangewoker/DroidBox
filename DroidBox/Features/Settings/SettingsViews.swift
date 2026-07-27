@@ -17,14 +17,20 @@ struct RuntimeSettingsView: View {
                     LabeledContent("状态", value: environment.diagnostics.jitText)
                     Button("重新检测", systemImage: "arrow.clockwise") { environment.runtimeManager.probeJIT() }
                     if environment.runtimeManager.jitStatus != .available {
-                        Text("Android VM 可尝试无 JIT 模式，但速度会非常慢。快速运行路径不受影响。")
+                        Text("Android VM 可尝试无 JIT 模式,但速度会非常慢。快速运行路径不受影响。")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
                 Section("核心组件") {
+                    LabeledContent(
+                        "Ren'Py",
+                        value: DroidBoxFrontendHost.shared.renPyRuntimeAvailable
+                            ? "\(RenPyPackageProfile.bundledRuntimeVersion) 已嵌入"
+                            : "未嵌入"
+                    )
                     LabeledContent("UTM/QEMU", value: DBQEMUBridge.coreBundled ? "已嵌入" : "未嵌入")
                     LabeledContent("显示通道", value: "VNC/RFB 3.8 (Raw, CopyRect)")
-                    Text("Runtime 数据与 QEMU 核心分开管理。当前源码保留固定版本的构建入口，完整核心需由 macOS CI 构建。")
+                    Text("Runtime 数据与 QEMU 核心分开管理。当前源码保留固定版本的构建入口,完整核心需由 macOS CI 构建。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
@@ -81,7 +87,7 @@ struct SettingsView: View {
                         ForEach(AppSettings.memoryOptions, id: \.self) { Text("\($0) MB").tag($0) }
                     }
                     if settings.vmMemoryMB >= 3072 {
-                        Text("超过 2048 MB 需要设备提供扩展内存权限，否则 iOS 可能直接终止应用。")
+                        Text("超过 2048 MB 需要设备提供扩展内存权限,否则 iOS 可能直接终止应用。")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }

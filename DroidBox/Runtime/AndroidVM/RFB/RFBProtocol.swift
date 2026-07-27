@@ -14,14 +14,14 @@ enum RFBError: LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidPort: "显示通道端口无效"
-        case .handshakeFailed(let value): "VNC 握手失败：\(value)"
-        case .unsupportedSecurity(let types): "Android 显示通道要求不支持的认证方式：\(types.map(String.init).joined(separator: ", "))"
-        case .authenticationRequired: "Android 显示通道要求密码认证，当前运行时未提供凭据"
-        case .authenticationFailed(let value): "显示通道认证被拒绝：\(value)"
+        case .handshakeFailed(let value): "VNC 握手失败:\(value)"
+        case .unsupportedSecurity(let types): "Android 显示通道要求不支持的认证方式:\(types.map(String.init).joined(separator: ", "))"
+        case .authenticationRequired: "Android 显示通道要求密码认证,当前运行时未提供凭据"
+        case .authenticationFailed(let value): "显示通道认证被拒绝:\(value)"
         case .truncatedMessage: "显示通道数据不完整"
         case .unsupportedEncoding(let value): "显示通道使用了不支持的编码 \(value)"
-        case .protocolViolation(let value): "显示通道协议错误：\(value)"
-        case .disconnected(let value): "显示通道已断开：\(value)"
+        case .protocolViolation(let value): "显示通道协议错误:\(value)"
+        case .disconnected(let value): "显示通道已断开:\(value)"
         }
     }
 }
@@ -148,7 +148,7 @@ enum RFBHandshake {
         guard parts.count == 2, let major = Int(parts[0]), let minor = Int(parts[1]) else {
             throw RFBError.handshakeFailed("无法解析版本 \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
-        guard major == 3, minor >= 7 else { throw RFBError.handshakeFailed("不支持 RFB \(major).\(minor)，需要 3.7 或更高") }
+        guard major == 3, minor >= 7 else { throw RFBError.handshakeFailed("不支持 RFB \(major).\(minor),需要 3.7 或更高") }
         return (major, minor)
     }
 

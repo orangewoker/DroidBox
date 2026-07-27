@@ -6,5 +6,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: xcodebuild -version
+      - run: chmod +x scripts/*.sh && ./scripts/prepare-renpy-runtime.sh
       - run: xcodebuild -project DroidBox.xcodeproj -scheme DroidBox -sdk iphoneos CODE_SIGNING_ALLOWED=NO build
-

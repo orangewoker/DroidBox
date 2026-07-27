@@ -1,23 +1,38 @@
 # DroidBox
 
-DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库和运行器，最低系统为 iOS 18。它可在设备上安全导入 APK/ZIP、解析 Android Binary XML Manifest、识别 ABI 和常见游戏引擎，并为 RPG Maker MV/MZ 提供 WebKit 快速运行路径。
+DroidBox 是面向 iPhone 与 iPad 的 APK 游戏库与运行器，最低系统为 iOS 18。
 
-当前仓库可以构建基础无签名 IPA。Android VM 的产品接口、状态机、Runtime 校验、JIT 探测、内置 ADB Host Client 以及 VNC/RFB 显示与触控输入通道已实现，但 UTM/QEMU 可执行核心与 Android 镜像尚未链接，因此普通 APK 会显示明确的“QEMU Core 未嵌入”，不会假装启动成功。Ren'Py Runtime 同样需要后续按许可证和体积独立构建。
+1.2.0 增加了 Ren'Py 8.4.1 原生 iOS 快速路径，目标是直接导入并运行采用 Python 3.12 字节码的 Ren'Py 8 Android APK。构建时从 Ren'Py 官方站点下载并校验 Renios，运行时不执行 APK 内的 Android `.so`，而是解包游戏脚本和资源，由同版本的 iOS 原生 Ren'Py 引擎解释执行。
 
 ## 功能
 
-- APK/ZIP 安全导入，解析 Binary XML Manifest 与 `resources.arsc`，提取应用名和图标
-- 识别 ABI 与 RPG Maker、Ren'Py、Unity、Godot、LibGDX 引擎，生成兼容性报告
+- 安全导入 APK/ZIP，解析 Binary XML Manifest 与 `resources.arsc`
+- 识别 ABI、Ren'Py、RPG Maker、Unity、Godot 与 LibGDX
+- Ren'Py 8.4.1 / Python 3.12 原生运行，支持 RAPT 的 `x-` 路径还原
+- 大型 Ren'Py APK 直接解包，不额外保留 APK 副本
 - RPG Maker MV/MZ 通过隔离 URL Scheme 的 WebKit 快速路径运行
-- Android VM 状态机：Runtime 校验、QCOW2 overlay、QMP 生命周期、ADB 安装与启动
-- 内置 RFB 3.8 客户端，渲染 QEMU VNC 画面并把触控映射为指针事件
-- 可持久化设置：VM 内存、导入上限、屏幕常亮、系统按键
+- Android VM 状态机、ADB Host Client、QMP 与 VNC/RFB 显示输入通道
+- 可持久化的导入上限、VM 内存、屏幕常亮与系统按键设置
+
+## 参考 APK
+
+针对 `特工17 v0.26.9.apk` 的分析结果：
+
+- 包名：`hexatail.agent17`
+- 引擎：Ren'Py 8.4.1
+- Python：3.12（`bytecode-312.rpyb`）
+- ABI：arm64-v8a、armeabi-v7a、x86_64
+- 游戏资源：约 2.86 GB，11,879 个 `assets/x-game/` 条目
+- 媒体：WebP、MP3、WAV、WebM
+
+该包进入 Ren'Py 原生快速路径，不启动完整 Android 虚拟机。
 
 ## 构建
 
 在 macOS 运行：
 
 ```bash
+chmod +x scripts/*.sh
 ./scripts/bootstrap.sh
 ./scripts/build-unsigned-ipa.sh
 ```

@@ -6,6 +6,6 @@ release/
 Runtimes/*.zip
 Runtimes/*.qcow2
 Runtimes/*.img
+Vendor/RenPy/Generated/
 *.xcuserstate
 xcuserdata/
-

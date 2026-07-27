@@ -5,6 +5,30 @@ final class APKKitTests:XCTestCase{
     func testSafePaths(){XCTAssertTrue(SafeArchive.isSafe("assets/www/index.html"));XCTAssertFalse(SafeArchive.isSafe("../escape"));XCTAssertFalse(SafeArchive.isSafe("/absolute"));XCTAssertFalse(SafeArchive.isSafe("C:/escape"))}
     func testEngineDetection(){let result=EngineDetector.detect(paths:["assets/www/index.html","assets/www/js/rmmz_core.js","assets/www/data/System.json"]);XCTAssertEqual(result.engine,.rpgMakerMZ);XCTAssertGreaterThan(result.confidence,0.5)}
     func testABIAnalysis(){XCTAssertEqual(ABIAnalyzer.analyze(paths:["lib/arm64-v8a/libgame.so"]),[.arm64]);XCTAssertEqual(ABIAnalyzer.analyze(paths:["classes.dex"]),[.javaOnly])}
+    func testRenPyAndroidAssetPathUnescaping() {
+        XCTAssertEqual(
+            SafeArchive.unescapeRenPyAssetPath("x-cache/x-bytecode-312.rpyb"),
+            "cache/bytecode-312.rpyb"
+        )
+        XCTAssertEqual(
+            SafeArchive.unescapeRenPyAssetPath("x-images/x-ui/x-icon.png"),
+            "images/ui/icon.png"
+        )
+    }
+    func testAgent17StyleRenPyProfile() {
+        let entries = [
+            archiveEntry("assets/private.mp3", size: 6_905_147),
+            archiveEntry("assets/x-renpy/x-common/x-00start.rpyc", size: 1_024),
+            archiveEntry("assets/x-game/x-cache/x-bytecode-312.rpyb", size: 8_317_505),
+            archiveEntry("assets/x-game/x-script/x-table.rpyc", size: 253_058),
+            archiveEntry("lib/arm64-v8a/librenpython.so", size: 36_642_768),
+        ]
+        let profile = RenPyPackageAnalyzer.analyze(entries: entries)
+        XCTAssertEqual(profile?.pythonBytecodeTag, "312")
+        XCTAssertEqual(profile?.gamePrefix, "assets/x-game/")
+        XCTAssertEqual(profile?.usesAndroidAssetEscaping, true)
+        XCTAssertEqual(profile?.isSupportedByBundledRuntime, true)
+    }
     func testTextManifest()throws{let xml="<manifest package=\"com.example.game\" android:versionName=\"1.2\"><application android:label=\"Test\"/></manifest>";let info=try BinaryXMLParser.parse(Data(xml.utf8));XCTAssertEqual(info.packageName,"com.example.game");XCTAssertEqual(info.label,"Test")}
     func testResourceTableStringAndDensity() throws {
         let table = try ResourceTableParser.parse(makeResourceTableFixture())
@@ -51,6 +75,18 @@ final class APKKitTests:XCTestCase{
         table.appendLE(UInt16(0x0002)); table.appendLE(UInt16(12)); table.appendLE(UInt32(12 + strings.count + package.count)); table.appendLE(UInt32(1))
         table.append(strings); table.append(package)
         return table
+    }
+
+    private func archiveEntry(_ path: String, size: UInt64) -> ArchiveEntryInfo {
+        ArchiveEntryInfo(
+            path: path,
+            compressed: size,
+            uncompressed: size,
+            localHeaderOffset: 0,
+            crc32: 0,
+            compressionMethod: 0,
+            directory: false
+        )
     }
 
     private func stringPool(_ strings: [String]) -> Data {

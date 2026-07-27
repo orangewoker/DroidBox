@@ -1,13 +1,23 @@
 # Third-Party Notices
 
+## Ren'Py 8.4.1 and Renios
+
+The Full Runtime build downloads and links the official Ren'Py 8.4.1 iOS support package. Ren'Py itself is MIT-licensed. Its iOS distribution includes third-party components under MIT, BSD, zlib, LGPL, and other licenses.
+
+The complete authoritative license list is maintained by the Ren'Py project at:
+
+https://www.renpy.org/doc/html/license.html
+
+Required distribution text:
+
+> This program contains free software licensed under a number of licenses, including the GNU Lesser General Public License. A complete list of software is available at https://www.renpy.org/l/license/.
+
 ## zlib
 
 Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler.
 
-This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software. Permission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the zlib license restrictions.
+This software is provided 'as-is', without any express or implied warranty. Permission is granted to use, alter, and redistribute it subject to the zlib license.
 
-## Components not distributed in this repository
+## Optional components not included in the default IPA
 
-UTM, QEMU, Android/LineageOS runtime images and Ren'Py runtime binaries are not currently included in the source tree or IPA. Their licenses must be bundled with any future binary distribution that includes them. See `DEPENDENCIES.md`.
-
-The optional QEMU Core build uses launcher design derived from UTM's `UTMQemuSystem`, Copyright osy, licensed under Apache-2.0. QEMU Core archives must include UTM's license and the licenses emitted by its dependency build.
+UTM, QEMU, and Android/LineageOS runtime images are not included in the default IPA. See `DEPENDENCIES.md`.
