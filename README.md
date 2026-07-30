@@ -76,3 +76,5 @@ Android-x86 9.0-r2 Runtime，QEMU 启动后通过本机 QMP、ADB 和 VNC/RFB �
 1.3.3 针对 Android VM 点启动后被 iOS 直接终止的问题，将默认客体内存降为 1024 MB、TCG 缓存从 512 MB 降为 128 MB，并改用进程 Jetsam 可用内存检测。QEMU 启动会保留日志和异常中断标记。
 
 1.3.4 将 QEMU 启动生命周期对齐 UTM 5.0.3：框架先同步加载，再由高优先级 pthread 运行。`Documents/Android/qemu-bridge.log` 会在动态库加载、符号解析和 QEMU 初始化前后同步记录阶段；异常退出后 DroidBox 会直接显示最后记录。
+
+1.3.5 将 QEMU 的标准输出和错误输出临时写入桥接日志，并记录完整启动参数，便于定位 QEMU 在初始化阶段主动退出的原因。

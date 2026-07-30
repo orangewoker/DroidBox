@@ -1,6 +1,7 @@
 // Launcher design follows UTM's Apache-2.0 UTMQemuSystem process boundary.
 #import "DBQEMUBridge.h"
 #import <dlfcn.h>
+#import <errno.h>
 #import <fcntl.h>
 #import <pthread.h>
 #import <stdlib.h>
@@ -74,6 +75,23 @@ static void *DBQEMUStartProcess(void *opaque) {
             argv[index] = allArguments[index].UTF8String;
         }
 
+        DBQEMUWriteStage(bridge, [NSString stringWithFormat:@"argv=%@", [allArguments componentsJoinedByString:@" | "]]);
+        int savedStdout = -1;
+        int savedStderr = -1;
+        int diagnosticDescriptor = open(bridge.diagnosticLogURL.fileSystemRepresentation, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (diagnosticDescriptor >= 0) {
+            savedStdout = dup(STDOUT_FILENO);
+            savedStderr = dup(STDERR_FILENO);
+            dup2(diagnosticDescriptor, STDOUT_FILENO);
+            dup2(diagnosticDescriptor, STDERR_FILENO);
+            close(diagnosticDescriptor);
+            setvbuf(stdout, NULL, _IONBF, 0);
+            setvbuf(stderr, NULL, _IONBF, 0);
+            DBQEMUWriteStage(bridge, @"stdio_redirect_end");
+        } else {
+            DBQEMUWriteStage(bridge, [NSString stringWithFormat:@"stdio_redirect_failed errno=%d", errno]);
+        }
+
         DBQEMUWriteStage(bridge, [NSString stringWithFormat:@"qemu_init_begin argc=%lu", (unsigned long)allArguments.count]);
         bridge.status = bridge.qemuInit((int)allArguments.count, argv, envp);
         DBQEMUWriteStage(bridge, [NSString stringWithFormat:@"qemu_init_end status=%ld", (long)bridge.status]);
@@ -83,6 +101,16 @@ static void *DBQEMUStartProcess(void *opaque) {
             DBQEMUWriteStage(bridge, @"qemu_main_loop_end");
             bridge.qemuCleanup();
             DBQEMUWriteStage(bridge, @"qemu_cleanup_end");
+        }
+        if (savedStdout >= 0) {
+            fflush(stdout);
+            dup2(savedStdout, STDOUT_FILENO);
+            close(savedStdout);
+        }
+        if (savedStderr >= 0) {
+            fflush(stderr);
+            dup2(savedStderr, STDERR_FILENO);
+            close(savedStderr);
         }
         free(argv);
         free(envp);
