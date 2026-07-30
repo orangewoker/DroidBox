@@ -30,6 +30,13 @@ enum CompatibilityAnalyzer {
                 detail: "检测到应用内购买权限，相关功能可能不可用。"
             ))
         }
+        if manifest.packageName?.localizedCaseInsensitiveContains("pojavlaunch") == true {
+            issues.append(.init(
+                severity: .warning,
+                title: "Java/OpenGL 嵌套启动器",
+                detail: "PojavLauncher 本身只是 Minecraft Java 版启动器。它可尝试在 Android VM 中启动，但 Minecraft 仍受软件渲染、内存和二次 JIT 限制。"
+            ))
+        }
         if text.contains("playintegrity") || text.contains("integrityservice") {
             issues.append(.init(
                 severity: .error,

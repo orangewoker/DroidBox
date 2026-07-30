@@ -18,6 +18,8 @@ final class RuntimeManager {
     private(set) var installMessage = ""
     let paths:AppPaths
     private var installedManifest: RuntimeManifest?
+    var qemuLogURL: URL { paths.android.appending(path: "qemu-last.log") }
+    private var vmSessionMarkerURL: URL { paths.android.appending(path: "vm-session-active") }
     init(paths:AppPaths){self.paths=paths;probeJIT();verifyInstalledRuntime()}
     func probeJIT(){
         switch DBRuntimeProbe.jitMode() {
@@ -97,9 +99,37 @@ final class RuntimeManager {
         let qemuResources = DBQEMUBridge.runtimeBundleURL.appending(path: "qemu").path
         let replacements = ["{runtime}": runtimeRoot.path, "{overlay}": overlay.path, "{base}": baseImageURL.path, "{qemu}": qemuResources, "{qmpPort}": String(qmpPort), "{adbPort}": String(adbPort), "{vncDisplay}": String(vncDisplay), "{memoryMB}": String(memoryMB)]
         if let custom = manifest.qemuArguments, !custom.isEmpty {
-            return custom.map { argument in replacements.reduce(argument) { $0.replacingOccurrences(of: $1.key, with: $1.value) } }
+            var arguments = custom.map { argument in replacements.reduce(argument) { $0.replacingOccurrences(of: $1.key, with: $1.value) } }
+            // Existing Runtime ZIPs used a 512 MB TCG translation cache. Together with
+            // guest RAM this can cross the iOS Jetsam limit before QEMU shows a frame.
+            if let accelIndex = arguments.firstIndex(of: "-accel"), arguments.indices.contains(accelIndex + 1) {
+                var accel = arguments[accelIndex + 1]
+                if accel.contains("tb-size=") {
+                    accel = accel.replacingOccurrences(of: "tb-size=\\d+", with: "tb-size=128", options: .regularExpression)
+                } else if accel.hasPrefix("tcg") {
+                    accel += ",tb-size=128"
+                }
+                arguments[accelIndex + 1] = accel
+            }
+            arguments += ["-D", qemuLogURL.path, "-d", "guest_errors"]
+            return arguments
         }
         throw DroidBoxError.runtimeCorrupted
+    }
+
+    func beginVMSession(gameID: UUID) throws {
+        try? FileManager.default.removeItem(at: qemuLogURL)
+        try gameID.uuidString.write(to: vmSessionMarkerURL, atomically: true, encoding: .utf8)
+    }
+
+    func endVMSession() {
+        try? FileManager.default.removeItem(at: vmSessionMarkerURL)
+    }
+
+    func consumeInterruptedSessionNotice() -> String? {
+        guard FileManager.default.fileExists(atPath: vmSessionMarkerURL.path) else { return nil }
+        try? FileManager.default.removeItem(at: vmSessionMarkerURL)
+        return "上次 Android VM 被系统异常中断，通常是内存超限或 QEMU 崩溃。本版已将默认内存降为 1024 MB。QEMU 日志位于：\n\(qemuLogURL.path)"
     }
     var runtimeRoot: URL { paths.android.appending(path:"base") }
     var baseImageURL: URL { runtimeRoot.appending(path:"system.qcow2") }

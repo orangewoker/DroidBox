@@ -46,11 +46,11 @@ enum PlayerResolution: String, CaseIterable, Identifiable, Sendable {
 /// also carry `didSet` observers to persist each write.
 @MainActor @Observable
 final class AppSettings {
-    static let memoryOptions = [1024, 1536, 2048, 3072]
+    static let memoryOptions = [768, 1024, 1280, 1536]
     static let fileSizeOptions = [2, 4, 8, 16]
 
     private struct Storage {
-        var vmMemoryMB = 1536
+        var vmMemoryMB = 1024
         var maximumFileSizeGB = 8
         var automaticRuntimeSelection = true
         var keepScreenAwake = true
@@ -68,6 +68,11 @@ final class AppSettings {
         self.defaults = defaults
         var loaded = Storage()
         loaded.vmMemoryMB = Self.readInt(defaults, .vmMemoryMB, fallback: loaded.vmMemoryMB, allowed: Self.memoryOptions)
+        if defaults.integer(forKey: Key.vmMemoryPolicyVersion.rawValue) < 1 {
+            loaded.vmMemoryMB = 1024
+            defaults.set(loaded.vmMemoryMB, forKey: Key.vmMemoryMB.rawValue)
+            defaults.set(1, forKey: Key.vmMemoryPolicyVersion.rawValue)
+        }
         loaded.maximumFileSizeGB = Self.readInt(defaults, .maximumFileSizeGB, fallback: loaded.maximumFileSizeGB, allowed: Self.fileSizeOptions)
         loaded.automaticRuntimeSelection = Self.readBool(defaults, .automaticRuntimeSelection, fallback: loaded.automaticRuntimeSelection)
         loaded.keepScreenAwake = Self.readBool(defaults, .keepScreenAwake, fallback: loaded.keepScreenAwake)
@@ -170,6 +175,7 @@ final class AppSettings {
 
     private enum Key: String {
         case vmMemoryMB = "settings.vmMemoryMB"
+        case vmMemoryPolicyVersion = "settings.vmMemoryPolicyVersion"
         case maximumFileSizeGB = "settings.maximumFileSizeGB"
         case automaticRuntimeSelection = "settings.automaticRuntimeSelection"
         case keepScreenAwake = "settings.keepScreenAwake"

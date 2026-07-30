@@ -49,7 +49,7 @@ struct RuntimeSettingsView: View {
                     Text("检测会区分 MAP_JIT 权限和 StikDebug 调试器权限。只有具备 MAP_JIT，或进程确实处于 CS_DEBUGGED/P_TRACED 状态且能创建可执行内存时，才会显示可用。Ren'Py 与 Java ME 不依赖 JIT。")
                         .font(.footnote).foregroundStyle(.secondary)
                     if environment.runtimeManager.jitStatus != .available {
-                        Text("Android VM 可尝试无 JIT 模式,但速度会非常慢。快速运行路径不受影响。")
+                        Text("当前内置的是 UTM Full QEMU Core；未检测到 JIT 时 Android VM 不会启动，以避免 QEMU 直接崩溃。")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -152,8 +152,8 @@ struct SettingsView: View {
                     Picker("VM 内存", selection: $settings.vmMemoryMB) {
                         ForEach(AppSettings.memoryOptions, id: \.self) { Text("\($0) MB").tag($0) }
                     }
-                    if settings.vmMemoryMB >= 3072 {
-                        Text("超过 2048 MB 需要设备提供扩展内存权限,否则 iOS 可能直接终止应用。")
+                    if settings.vmMemoryMB >= 1280 {
+                        Text("1280 MB 以上会显著提高 iOS Jetsam 终止风险；排查闪退时请先使用 768 或 1024 MB。")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }

@@ -35,7 +35,10 @@ final class AndroidVMController {
         launchTask?.cancel();error=nil
         launchTask=Task{do{
             try await transition(.preparingRuntime,timeout:.seconds(3)){guard self.runtimeManager.androidRuntimeValid else{throw DroidBoxError.runtimeMissing}}
-            try await transition(.checkingJIT,timeout:.seconds(3)){if self.runtimeManager.jitStatus == .unknown{self.runtimeManager.probeJIT()}}
+            try await transition(.checkingJIT,timeout:.seconds(3)){
+                self.runtimeManager.probeJIT()
+                guard self.runtimeManager.jitStatus == .available else { throw DroidBoxError.jitUnavailable }
+            }
             try await transition(.creatingOverlay,timeout:.seconds(20)){try await self.runtimeManager.prepareOverlay(gameID:game.id)}
             try await transition(.startingVM,timeout:.seconds(15)){try self.startQEMU(game)}
             try await transition(.connectingControl,timeout:.seconds(20)){try await self.connectQMP()}
@@ -84,13 +87,24 @@ final class AndroidVMController {
     }
     private func startQEMU(_ game: GameRecord) throws {
         guard DBQEMUBridge.coreBundled else { throw DroidBoxError.unsupported("当前 IPA 未包含 QEMU Core。请使用 Full Runtime 构建。") }
-        guard DBRuntimeProbe.availableMemoryEstimate() > UInt64(settings.vmMemoryMB) * 1024 * 1024 else { throw DroidBoxError.insufficientMemory }
+        let requiredMemory = UInt64(settings.vmMemoryMB + 384) * 1024 * 1024
+        guard DBRuntimeProbe.availableMemoryEstimate() > requiredMemory else { throw DroidBoxError.insufficientMemory }
         qmpPort = UInt16.random(in: 21000...30000); adbPort = UInt16.random(in: 30001...40000); vncDisplay = Int.random(in: 10...90)
         let arguments = try runtimeManager.qemuArguments(gameID:game.id,qmpPort:qmpPort,adbPort:adbPort,vncDisplay:vncDisplay,memoryMB:settings.vmMemoryMB)
-        try bridge.start(withArguments:arguments,environment:["TMPDIR":runtimeManager.paths.temporary.path],exitHandler:{[weak self] code,message in
-            guard let self, code != 0 else{return}
-            Task { @MainActor in self.error=message ?? "QEMU exited with code \(code)";self.state = .failed;self.detail=self.error ?? "QEMU 已退出";self.display.stop() }
+        try runtimeManager.beginVMSession(gameID: game.id)
+        do {
+            try bridge.start(withArguments:arguments,environment:["TMPDIR":runtimeManager.paths.temporary.path],exitHandler:{[weak self] code,message in
+            guard let self else{return}
+            Task { @MainActor in
+                self.runtimeManager.endVMSession()
+                guard code != 0 else { return }
+                self.error=message ?? "QEMU exited with code \(code)";self.state = .failed;self.detail=self.error ?? "QEMU 已退出";self.display.stop()
+            }
         })
+        } catch {
+            runtimeManager.endVMSession()
+            throw error
+        }
     }
 
     /// QEMU opens the VNC listener during startup, but the guest may not have drawn yet.

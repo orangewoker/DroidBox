@@ -18,6 +18,9 @@ final class AppEnvironment {
             let paths=try AppPaths();self.paths=paths;let library=GameLibrary(paths:paths);self.library=library
             let settings=AppSettings();self.settings=settings
             importer=ImportCoordinator(library:library,settings:settings);runtimeManager=RuntimeManager(paths:paths);diagnostics=DiagnosticsService(runtimeManager:runtimeManager)
+            if let message = runtimeManager.consumeInterruptedSessionNotice() {
+                importer.reportNotice(title: "Android VM 上次异常中断", message: message)
+            }
             Task { await AppLogger.shared.configure(paths:paths);await AppLogger.shared.log(.default, "DroidBox started") }
         } catch { fatalError("Cannot initialize DroidBox storage: \(error)") }
     }

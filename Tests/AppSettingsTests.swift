@@ -21,7 +21,7 @@ final class AppSettingsTests: XCTestCase {
 
     func testDefaultsMatchDocumentedValues() {
         let settings = AppSettings(defaults: defaults)
-        XCTAssertEqual(settings.vmMemoryMB, 1536)
+        XCTAssertEqual(settings.vmMemoryMB, 1024)
         XCTAssertEqual(settings.maximumFileSizeGB, 8)
         XCTAssertEqual(settings.maximumFileSizeBytes, 8 * 1024 * 1024 * 1024)
         XCTAssertTrue(settings.automaticRuntimeSelection)
@@ -32,14 +32,14 @@ final class AppSettingsTests: XCTestCase {
 
     func testChangesPersistAcrossInstances() {
         let settings = AppSettings(defaults: defaults)
-        settings.vmMemoryMB = 2048
+        settings.vmMemoryMB = 1280
         settings.maximumFileSizeGB = 16
         settings.showSystemKeys = false
         settings.playerResolution = .r240x320
         settings.virtualControlsOpacity = 0.55
 
         let reloaded = AppSettings(defaults: defaults)
-        XCTAssertEqual(reloaded.vmMemoryMB, 2048)
+        XCTAssertEqual(reloaded.vmMemoryMB, 1280)
         XCTAssertEqual(reloaded.maximumFileSizeGB, 16)
         XCTAssertFalse(reloaded.showSystemKeys)
         XCTAssertEqual(reloaded.playerResolution, .r240x320)
@@ -60,21 +60,29 @@ final class AppSettingsTests: XCTestCase {
     func testOutOfRangeValuesAreRejected() {
         let settings = AppSettings(defaults: defaults)
         settings.vmMemoryMB = 65536
-        XCTAssertEqual(settings.vmMemoryMB, 1536, "an unsupported memory size must not stick")
+        XCTAssertEqual(settings.vmMemoryMB, 1024, "an unsupported memory size must not stick")
         settings.maximumFileSizeGB = 999
         XCTAssertEqual(settings.maximumFileSizeGB, 8)
     }
 
     func testResetRestoresDefaults() {
         let settings = AppSettings(defaults: defaults)
-        settings.vmMemoryMB = 2048
+        settings.vmMemoryMB = 1536
         settings.maximumFileSizeGB = 2
         settings.showSystemKeys = false
         settings.resetToDefaults()
-        XCTAssertEqual(settings.vmMemoryMB, 1536)
+        XCTAssertEqual(settings.vmMemoryMB, 1024)
         XCTAssertEqual(settings.maximumFileSizeGB, 8)
         XCTAssertTrue(settings.showSystemKeys)
-        XCTAssertEqual(AppSettings(defaults: defaults).vmMemoryMB, 1536, "reset must be persisted")
+        XCTAssertEqual(AppSettings(defaults: defaults).vmMemoryMB, 1024, "reset must be persisted")
+    }
+
+    func testLegacyMemorySettingMigratesOnce() {
+        defaults.set(1536, forKey: "settings.vmMemoryMB")
+        let migrated = AppSettings(defaults: defaults)
+        XCTAssertEqual(migrated.vmMemoryMB, 1024)
+        migrated.vmMemoryMB = 1536
+        XCTAssertEqual(AppSettings(defaults: defaults).vmMemoryMB, 1536)
     }
 
     func testImportCoordinatorReadsLiveLimit() throws {

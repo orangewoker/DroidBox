@@ -1,5 +1,6 @@
 #import "DBRuntimeProbe.h"
 #import <mach/mach.h>
+#import <os/proc.h>
 #import <sys/mman.h>
 #import <sys/sysctl.h>
 #import <sys/proc.h>
@@ -70,8 +71,8 @@ extern int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
 }
 + (uint64_t)physicalMemory { return NSProcessInfo.processInfo.physicalMemory; }
 + (uint64_t)availableMemoryEstimate {
-    mach_msg_type_number_t count=HOST_VM_INFO64_COUNT; vm_statistics64_data_t stats; mach_port_t host=mach_host_self();
-    if(host_statistics64(host,HOST_VM_INFO64,(host_info64_t)&stats,&count)!=KERN_SUCCESS)return 0;
-    return (uint64_t)(stats.free_count+stats.inactive_count)*(uint64_t)vm_page_size;
+    // Unlike host free pages, this reports how much more memory the current process can
+    // allocate before iOS reaches its memorystatus (Jetsam) limit.
+    return (uint64_t)os_proc_available_memory();
 }
 @end

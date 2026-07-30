@@ -44,7 +44,7 @@ cat > "$WORK/package/runtime.json" <<EOF
   "qemuArguments": [
     "-L", "{qemu}",
     "-machine", "q35",
-    "-accel", "tcg,tb-size=512",
+    "-accel", "tcg,tb-size=128",
     "-cpu", "max",
     "-smp", "2",
     "-m", "{memoryMB}",
