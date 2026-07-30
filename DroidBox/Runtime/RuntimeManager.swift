@@ -19,6 +19,7 @@ final class RuntimeManager {
     let paths:AppPaths
     private var installedManifest: RuntimeManifest?
     var qemuLogURL: URL { paths.android.appending(path: "qemu-last.log") }
+    var qemuBridgeLogURL: URL { paths.android.appending(path: "qemu-bridge.log") }
     private var vmSessionMarkerURL: URL { paths.android.appending(path: "vm-session-active") }
     init(paths:AppPaths){self.paths=paths;probeJIT();verifyInstalledRuntime()}
     func probeJIT(){
@@ -119,6 +120,7 @@ final class RuntimeManager {
 
     func beginVMSession(gameID: UUID) throws {
         try? FileManager.default.removeItem(at: qemuLogURL)
+        try? FileManager.default.removeItem(at: qemuBridgeLogURL)
         try gameID.uuidString.write(to: vmSessionMarkerURL, atomically: true, encoding: .utf8)
     }
 
@@ -129,7 +131,19 @@ final class RuntimeManager {
     func consumeInterruptedSessionNotice() -> String? {
         guard FileManager.default.fileExists(atPath: vmSessionMarkerURL.path) else { return nil }
         try? FileManager.default.removeItem(at: vmSessionMarkerURL)
-        return "上次 Android VM 被系统异常中断，通常是内存超限或 QEMU 崩溃。本版已将默认内存降为 1024 MB。QEMU 日志位于：\n\(qemuLogURL.path)"
+        let bridgeLog = (try? String(contentsOf: qemuBridgeLogURL, encoding: .utf8))?
+            .split(separator: "\n")
+            .suffix(12)
+            .joined(separator: "\n")
+        let stage = bridgeLog?.isEmpty == false ? bridgeLog! : "原生桥接日志尚未写入"
+        return """
+        上次 Android VM 在原生启动阶段异常中断。最后记录：
+
+        \(stage)
+
+        桥接日志：\(qemuBridgeLogURL.path)
+        QEMU 日志：\(qemuLogURL.path)
+        """
     }
     var runtimeRoot: URL { paths.android.appending(path:"base") }
     var baseImageURL: URL { runtimeRoot.appending(path:"system.qcow2") }

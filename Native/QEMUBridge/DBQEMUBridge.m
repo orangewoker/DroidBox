@@ -1,17 +1,106 @@
 // Launcher design follows UTM's Apache-2.0 UTMQemuSystem process boundary.
 #import "DBQEMUBridge.h"
 #import <dlfcn.h>
+#import <fcntl.h>
 #import <pthread.h>
 #import <stdlib.h>
 #import <string.h>
+#import <unistd.h>
+
+typedef int (*DBQEMUInitFunction)(int, const char *[], const char *[]);
+typedef void (*DBQEMUVoidFunction)(void);
 
 static void DBQEMUBridgeBinaryAnchor(void) {}
 
 @interface DBQEMUBridge ()
 @property(atomic, readwrite, getter=isRunning) BOOL running;
+@property(nonatomic, copy) NSArray<NSString *> *arguments;
+@property(nonatomic, copy) NSDictionary<NSString *, NSString *> *environment;
+@property(nonatomic, copy) DBQEMUExitHandler exitHandler;
+@property(nonatomic) NSURL *currentDirectory;
+@property(nonatomic) NSURL *diagnosticLogURL;
+@property(nonatomic) dispatch_semaphore_t done;
+@property(nonatomic) dispatch_queue_t completionQueue;
+@property(nonatomic) NSInteger status;
+@property(nonatomic) BOOL fatal;
+@property(nonatomic) void *coreHandle;
+@property(nonatomic) DBQEMUInitFunction qemuInit;
+@property(nonatomic) DBQEMUVoidFunction qemuMainLoop;
+@property(nonatomic) DBQEMUVoidFunction qemuCleanup;
+@property(nonatomic) pthread_t qemuThread;
 @end
 
+static void DBQEMUWriteStage(DBQEMUBridge *bridge, NSString *stage) {
+    NSURL *url = bridge.diagnosticLogURL;
+    if (!url) return;
+    NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+    NSString *line = [NSString stringWithFormat:@"%@\t%@\n", [formatter stringFromDate:NSDate.date], stage];
+    NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+    int descriptor = open(url.fileSystemRepresentation, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (descriptor < 0) return;
+    const uint8_t *bytes = data.bytes;
+    NSUInteger remaining = data.length;
+    while (remaining > 0) {
+        ssize_t written = write(descriptor, bytes, remaining);
+        if (written <= 0) break;
+        bytes += written;
+        remaining -= (NSUInteger)written;
+    }
+    fsync(descriptor);
+    close(descriptor);
+}
+
+static void *DBQEMUStartProcess(void *opaque) {
+    DBQEMUBridge *bridge = (__bridge_transfer DBQEMUBridge *)opaque;
+    @autoreleasepool {
+        NSMutableArray<NSString *> *environmentStrings = [NSMutableArray arrayWithCapacity:bridge.environment.count];
+        [bridge.environment enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) {
+            [environmentStrings addObject:[NSString stringWithFormat:@"%@=%@", key, value]];
+            setenv(key.UTF8String, value.UTF8String, 1);
+        }];
+        const char **envp = calloc(environmentStrings.count + 1, sizeof(char *));
+        for (NSUInteger index = 0; index < environmentStrings.count; index++) {
+            envp[index] = environmentStrings[index].UTF8String;
+        }
+
+        if (bridge.currentDirectory.path.length > 0) {
+            chdir(bridge.currentDirectory.fileSystemRepresentation);
+        }
+
+        NSMutableArray<NSString *> *allArguments = [NSMutableArray arrayWithObject:@"qemu-system-x86_64"];
+        [allArguments addObjectsFromArray:bridge.arguments];
+        const char **argv = calloc(allArguments.count + 1, sizeof(char *));
+        for (NSUInteger index = 0; index < allArguments.count; index++) {
+            argv[index] = allArguments[index].UTF8String;
+        }
+
+        DBQEMUWriteStage(bridge, [NSString stringWithFormat:@"qemu_init_begin argc=%lu", (unsigned long)allArguments.count]);
+        bridge.status = bridge.qemuInit((int)allArguments.count, argv, envp);
+        DBQEMUWriteStage(bridge, [NSString stringWithFormat:@"qemu_init_end status=%ld", (long)bridge.status]);
+        if (bridge.status == 0) {
+            DBQEMUWriteStage(bridge, @"qemu_main_loop_begin");
+            bridge.qemuMainLoop();
+            DBQEMUWriteStage(bridge, @"qemu_main_loop_end");
+            bridge.qemuCleanup();
+            DBQEMUWriteStage(bridge, @"qemu_cleanup_end");
+        }
+        free(argv);
+        free(envp);
+        dispatch_semaphore_signal(bridge.done);
+    }
+    return NULL;
+}
+
 @implementation DBQEMUBridge
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        dispatch_queue_attr_t attributes = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, QOS_MIN_RELATIVE_PRIORITY);
+        _completionQueue = dispatch_queue_create("DroidBox QEMU Completion Queue", attributes);
+    }
+    return self;
+}
 
 + (NSURL *)binaryBundleURL {
     Dl_info info = {0};
@@ -70,6 +159,8 @@ static void DBQEMUBridgeBinaryAnchor(void) {}
 
 - (BOOL)startWithArguments:(NSArray<NSString *> *)arguments
                environment:(NSDictionary<NSString *,NSString *> *)environment
+          currentDirectory:(NSURL *)currentDirectory
+          diagnosticLogURL:(NSURL *)diagnosticLogURL
                exitHandler:(DBQEMUExitHandler)exitHandler
                       error:(NSError *__autoreleasing  _Nullable *)error {
     @synchronized (self) {
@@ -84,44 +175,93 @@ static void DBQEMUBridgeBinaryAnchor(void) {}
         self.running = YES;
     }
 
-    NSArray<NSString *> *capturedArguments = [arguments copy];
-    NSDictionary<NSString *, NSString *> *capturedEnvironment = [environment copy];
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        @autoreleasepool {
-            pthread_t qemuThread = pthread_self();
-            atexit_b(^{
-                if (pthread_equal(pthread_self(), qemuThread)) {
-                    self.running = NO;
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        exitHandler(-1, @"QEMU terminated its worker thread");
-                    });
-                    pthread_exit(NULL);
-                }
-            });
-            NSInteger exitCode = -1; NSString *message = nil;
-            void *handle = dlopen(DBQEMUBridge.coreURL.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
-            if (!handle) {
-                message = [NSString stringWithUTF8String:dlerror() ?: "dlopen failed"];
-            } else {
-                int (*qemuInit)(int, const char *[], const char *[]) = dlsym(handle, "qemu_init");
-                void (*qemuMainLoop)(void) = dlsym(handle, "qemu_main_loop");
-                void (*qemuCleanup)(void) = dlsym(handle, "qemu_cleanup");
-                if (!qemuInit || !qemuMainLoop || !qemuCleanup) {
-                    message = @"Required QEMU entry points are missing";
-                } else {
-                    [capturedEnvironment enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *value, BOOL *stop) { setenv(key.UTF8String, value.UTF8String, 1); }];
-                    NSMutableArray<NSString *> *all = [NSMutableArray arrayWithObject:@"qemu-system-x86_64"]; [all addObjectsFromArray:capturedArguments];
-                    const char **argv = calloc(all.count + 1, sizeof(char *));
-                    for (NSUInteger i = 0; i < all.count; i++) argv[i] = strdup(all[i].fileSystemRepresentation);
-                    exitCode = qemuInit((int)all.count, argv, NULL);
-                    if (exitCode == 0) { qemuMainLoop(); qemuCleanup(); }
-                    for (NSUInteger i = 0; i < all.count; i++) free((void *)argv[i]); free(argv);
-                }
-                dlclose(handle);
-            }
-            self.running = NO;
-            dispatch_async(dispatch_get_main_queue(), ^{ exitHandler(exitCode, message); });
+    self.arguments = arguments;
+    self.environment = environment;
+    self.currentDirectory = currentDirectory;
+    self.diagnosticLogURL = diagnosticLogURL;
+    self.exitHandler = exitHandler;
+    self.done = dispatch_semaphore_create(0);
+    self.status = -1;
+    self.fatal = NO;
+
+    NSURL *coreURL = DBQEMUBridge.coreURL;
+    DBQEMUWriteStage(self, [NSString stringWithFormat:@"bridge_start core=%@", coreURL.path]);
+    DBQEMUWriteStage(self, @"core_dlopen_begin");
+    self.coreHandle = dlopen(coreURL.fileSystemRepresentation, RTLD_LAZY | RTLD_LOCAL);
+    if (!self.coreHandle) {
+        NSString *message = [NSString stringWithUTF8String:dlerror() ?: "dlopen failed"];
+        DBQEMUWriteStage(self, [NSString stringWithFormat:@"core_dlopen_failed error=%@", message]);
+        self.running = NO;
+        if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:3 userInfo:@{NSLocalizedDescriptionKey: message}];
+        return NO;
+    }
+    DBQEMUWriteStage(self, @"core_dlopen_end");
+
+    dlerror();
+    self.qemuInit = (DBQEMUInitFunction)dlsym(self.coreHandle, "qemu_init");
+    self.qemuMainLoop = (DBQEMUVoidFunction)dlsym(self.coreHandle, "qemu_main_loop");
+    self.qemuCleanup = (DBQEMUVoidFunction)dlsym(self.coreHandle, "qemu_cleanup");
+    const char *symbolError = dlerror();
+    if (!self.qemuInit || !self.qemuMainLoop || !self.qemuCleanup || symbolError) {
+        NSString *message = symbolError ? [NSString stringWithUTF8String:symbolError] : @"Required QEMU entry points are missing";
+        DBQEMUWriteStage(self, [NSString stringWithFormat:@"symbol_resolution_failed error=%@", message]);
+        dlclose(self.coreHandle);
+        self.coreHandle = NULL;
+        self.running = NO;
+        if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:4 userInfo:@{NSLocalizedDescriptionKey: message}];
+        return NO;
+    }
+    DBQEMUWriteStage(self, @"symbol_resolution_end");
+
+    __weak typeof(self) weakSelf = self;
+    if (atexit_b(^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf && pthread_equal(pthread_self(), strongSelf.qemuThread)) {
+            strongSelf.fatal = YES;
+            DBQEMUWriteStage(strongSelf, @"qemu_called_exit");
+            dispatch_semaphore_signal(strongSelf.done);
+            pthread_exit(NULL);
         }
+    }) != 0) {
+        DBQEMUWriteStage(self, @"atexit_registration_failed");
+        dlclose(self.coreHandle);
+        self.coreHandle = NULL;
+        self.running = NO;
+        if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:5 userInfo:@{NSLocalizedDescriptionKey: @"Unable to register QEMU exit handler"}];
+        return NO;
+    }
+
+    pthread_attr_t attributes;
+    pthread_attr_init(&attributes);
+    pthread_attr_set_qos_class_np(&attributes, QOS_CLASS_USER_INTERACTIVE, 0);
+    DBQEMUWriteStage(self, @"pthread_create_begin");
+    void *threadContext = (__bridge_retained void *)self;
+    int threadResult = pthread_create(&_qemuThread, &attributes, DBQEMUStartProcess, threadContext);
+    pthread_attr_destroy(&attributes);
+    if (threadResult != 0) {
+        CFBridgingRelease(threadContext);
+        NSString *message = [NSString stringWithFormat:@"pthread_create failed: %s", strerror(threadResult)];
+        DBQEMUWriteStage(self, message);
+        dlclose(self.coreHandle);
+        self.coreHandle = NULL;
+        self.running = NO;
+        if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:6 userInfo:@{NSLocalizedDescriptionKey: message}];
+        return NO;
+    }
+    DBQEMUWriteStage(self, @"pthread_create_end");
+
+    dispatch_async(self.completionQueue, ^{
+        dispatch_semaphore_wait(self.done, DISPATCH_TIME_FOREVER);
+        NSInteger exitCode = self.fatal || self.status != 0 ? -1 : 0;
+        NSString *message = self.fatal ? @"QEMU terminated its worker thread" : nil;
+        DBQEMUWriteStage(self, [NSString stringWithFormat:@"worker_finished status=%ld fatal=%d", (long)self.status, self.fatal]);
+        if (dlclose(self.coreHandle) != 0 && !message) {
+            message = [NSString stringWithUTF8String:dlerror() ?: "dlclose failed"];
+            exitCode = -1;
+        }
+        self.coreHandle = NULL;
+        self.running = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{ self.exitHandler(exitCode, message); });
     });
     return YES;
 }

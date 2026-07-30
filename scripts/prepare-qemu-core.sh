@@ -58,6 +58,20 @@ for framework in "${FRAMEWORKS[@]}"; do
   codesign --remove-signature "$OUTPUT/Frameworks/$framework/$executable" 2>/dev/null || true
   rm -rf "$OUTPUT/Frameworks/$framework/_CodeSignature"
 done
+
+# Fail the build when the pinned framework set is not a complete @rpath closure.
+# dlopen otherwise discovers a missing nested dependency only on the user's device.
+for framework in "${FRAMEWORKS[@]}"; do
+  executable="${framework%.framework}"
+  binary="$OUTPUT/Frameworks/$framework/$executable"
+  while IFS= read -r dependency; do
+    relative="${dependency#@rpath/}"
+    if [ ! -e "$OUTPUT/Frameworks/$relative" ]; then
+      echo "Missing QEMU dependency: $framework -> $dependency" >&2
+      exit 1
+    fi
+  done < <(otool -L "$binary" | awk '$1 ~ /^@rpath\// { print $1 }')
+done
 ditto "$TMP/Payload/UTM.app/qemu" "$OUTPUT/share"
 curl -fsSL "https://raw.githubusercontent.com/utmapp/UTM/e4a4c34b671284263fc69f81b607de494d7e9b65/LICENSE" \
   -o "$OUTPUT/licenses/UTM-LICENSE"

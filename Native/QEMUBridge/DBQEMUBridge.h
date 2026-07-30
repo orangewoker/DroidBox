@@ -9,6 +9,8 @@ typedef void (^DBQEMUExitHandler)(NSInteger exitCode, NSString * _Nullable messa
 @property(atomic, readonly, getter=isRunning) BOOL running;
 - (BOOL)startWithArguments:(NSArray<NSString *> *)arguments
                environment:(NSDictionary<NSString *, NSString *> *)environment
+          currentDirectory:(NSURL *)currentDirectory
+          diagnosticLogURL:(NSURL *)diagnosticLogURL
                exitHandler:(DBQEMUExitHandler)exitHandler
                       error:(NSError **)error;
 @end

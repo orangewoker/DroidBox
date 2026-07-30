@@ -93,14 +93,23 @@ final class AndroidVMController {
         let arguments = try runtimeManager.qemuArguments(gameID:game.id,qmpPort:qmpPort,adbPort:adbPort,vncDisplay:vncDisplay,memoryMB:settings.vmMemoryMB)
         try runtimeManager.beginVMSession(gameID: game.id)
         do {
-            try bridge.start(withArguments:arguments,environment:["TMPDIR":runtimeManager.paths.temporary.path],exitHandler:{[weak self] code,message in
-            guard let self else{return}
-            Task { @MainActor in
-                self.runtimeManager.endVMSession()
-                guard code != 0 else { return }
-                self.error=message ?? "QEMU exited with code \(code)";self.state = .failed;self.detail=self.error ?? "QEMU 已退出";self.display.stop()
-            }
-        })
+            try bridge.start(
+                withArguments: arguments,
+                environment: ["TMPDIR": runtimeManager.paths.temporary.path],
+                currentDirectory: runtimeManager.paths.android,
+                diagnosticLogURL: runtimeManager.qemuBridgeLogURL,
+                exitHandler: { [weak self] code, message in
+                    guard let self else { return }
+                    Task { @MainActor in
+                        self.runtimeManager.endVMSession()
+                        guard code != 0 else { return }
+                        self.error = message ?? "QEMU exited with code \(code)"
+                        self.state = .failed
+                        self.detail = self.error ?? "QEMU 已退出"
+                        self.display.stop()
+                    }
+                }
+            )
         } catch {
             runtimeManager.endVMSession()
             throw error
