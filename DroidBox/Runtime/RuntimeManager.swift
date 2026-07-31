@@ -128,6 +128,24 @@ final class RuntimeManager {
         try? FileManager.default.removeItem(at: vmSessionMarkerURL)
     }
 
+    func qemuFailureMessage(fallback: String) -> String {
+        guard let content = try? String(contentsOf: qemuBridgeLogURL, encoding: .utf8) else {
+            return fallback
+        }
+        if content.contains("ran out of space in drive_config_groups") {
+            return "检测到 Android VM 被重复启动。DroidBox 已阻止第二个 QEMU 实例；请返回游戏库后重新启动。"
+        }
+        let rawError = content
+            .split(separator: "\n")
+            .map(String.init)
+            .last { line in
+                !line.isEmpty &&
+                !line.contains("\t") &&
+                !line.hasPrefix("argv=")
+            }
+        return rawError ?? fallback
+    }
+
     func consumeInterruptedSessionNotice() -> String? {
         guard FileManager.default.fileExists(atPath: vmSessionMarkerURL.path) else { return nil }
         try? FileManager.default.removeItem(at: vmSessionMarkerURL)

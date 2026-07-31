@@ -74,6 +74,7 @@ struct PlayerContainerView: View {
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = environment.settings.keepScreenAwake
             guard game.runtimeMode == .androidVM else { return }
+            guard vm == nil else { return }
             let controller = AndroidVMController(
                 runtimeManager: environment.runtimeManager,
                 settings: environment.settings

@@ -32,8 +32,11 @@ final class AndroidVMController {
     }
 
     func launch(_ game:GameRecord){
-        launchTask?.cancel();error=nil
-        launchTask=Task{do{
+        guard launchTask == nil else { return }
+        error=nil
+        launchTask=Task{
+            defer { launchTask = nil }
+            do{
             try await transition(.preparingRuntime,timeout:.seconds(3)){guard self.runtimeManager.androidRuntimeValid else{throw DroidBoxError.runtimeMissing}}
             try await transition(.checkingJIT,timeout:.seconds(3)){
                 self.runtimeManager.probeJIT()
@@ -103,7 +106,9 @@ final class AndroidVMController {
                     Task { @MainActor in
                         self.runtimeManager.endVMSession()
                         guard code != 0 else { return }
-                        self.error = message ?? "QEMU exited with code \(code)"
+                        self.error = self.runtimeManager.qemuFailureMessage(
+                            fallback: message ?? "QEMU exited with code \(code)"
+                        )
                         self.state = .failed
                         self.detail = self.error ?? "QEMU 已退出"
                         self.display.stop()

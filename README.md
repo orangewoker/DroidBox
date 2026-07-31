@@ -78,3 +78,5 @@ Android-x86 9.0-r2 Runtime，QEMU 启动后通过本机 QMP、ADB 和 VNC/RFB �
 1.3.4 将 QEMU 启动生命周期对齐 UTM 5.0.3：框架先同步加载，再由高优先级 pthread 运行。`Documents/Android/qemu-bridge.log` 会在动态库加载、符号解析和 QEMU 初始化前后同步记录阶段；异常退出后 DroidBox 会直接显示最后记录。
 
 1.3.5 将 QEMU 的标准输出和错误输出临时写入桥接日志，并记录完整启动参数，便于定位 QEMU 在初始化阶段主动退出的原因。
+
+1.3.6 修复 SwiftUI 重复触发 Android VM 启动的问题，并在控制器和原生 QEMU 桥接层增加单实例保护；QEMU 原始错误会直接显示在启动失败界面。

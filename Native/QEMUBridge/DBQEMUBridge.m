@@ -12,9 +12,11 @@ typedef int (*DBQEMUInitFunction)(int, const char *[], const char *[]);
 typedef void (*DBQEMUVoidFunction)(void);
 
 static void DBQEMUBridgeBinaryAnchor(void) {}
+static BOOL DBQEMUProcessRunning = NO;
 
 @interface DBQEMUBridge ()
 @property(atomic, readwrite, getter=isRunning) BOOL running;
+@property(nonatomic) BOOL ownsProcessSlot;
 @property(nonatomic, copy) NSArray<NSString *> *arguments;
 @property(nonatomic, copy) NSDictionary<NSString *, NSString *> *environment;
 @property(nonatomic, copy) DBQEMUExitHandler exitHandler;
@@ -121,6 +123,16 @@ static void *DBQEMUStartProcess(void *opaque) {
 
 @implementation DBQEMUBridge
 
+- (void)releaseProcessSlot {
+    @synchronized (DBQEMUBridge.class) {
+        if (self.ownsProcessSlot) {
+            DBQEMUProcessRunning = NO;
+            self.ownsProcessSlot = NO;
+        }
+        self.running = NO;
+    }
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
@@ -191,15 +203,19 @@ static void *DBQEMUStartProcess(void *opaque) {
           diagnosticLogURL:(NSURL *)diagnosticLogURL
                exitHandler:(DBQEMUExitHandler)exitHandler
                       error:(NSError *__autoreleasing  _Nullable *)error {
-    @synchronized (self) {
-        if (self.running) {
-            if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:1 userInfo:@{NSLocalizedDescriptionKey:@"QEMU is already running"}];
+    @synchronized (DBQEMUBridge.class) {
+        if (self.running || DBQEMUProcessRunning) {
+            if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU"
+                                                     code:1
+                                                 userInfo:@{NSLocalizedDescriptionKey:@"Android VM 正在启动或运行，请勿重复启动。"}];
             return NO;
         }
         if (!DBQEMUBridge.coreBundled) {
             if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:2 userInfo:@{NSLocalizedDescriptionKey:@"qemu-x86_64-softmmu.framework is missing"}];
             return NO;
         }
+        DBQEMUProcessRunning = YES;
+        self.ownsProcessSlot = YES;
         self.running = YES;
     }
 
@@ -219,7 +235,7 @@ static void *DBQEMUStartProcess(void *opaque) {
     if (!self.coreHandle) {
         NSString *message = [NSString stringWithUTF8String:dlerror() ?: "dlopen failed"];
         DBQEMUWriteStage(self, [NSString stringWithFormat:@"core_dlopen_failed error=%@", message]);
-        self.running = NO;
+        [self releaseProcessSlot];
         if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:3 userInfo:@{NSLocalizedDescriptionKey: message}];
         return NO;
     }
@@ -235,7 +251,7 @@ static void *DBQEMUStartProcess(void *opaque) {
         DBQEMUWriteStage(self, [NSString stringWithFormat:@"symbol_resolution_failed error=%@", message]);
         dlclose(self.coreHandle);
         self.coreHandle = NULL;
-        self.running = NO;
+        [self releaseProcessSlot];
         if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:4 userInfo:@{NSLocalizedDescriptionKey: message}];
         return NO;
     }
@@ -254,7 +270,7 @@ static void *DBQEMUStartProcess(void *opaque) {
         DBQEMUWriteStage(self, @"atexit_registration_failed");
         dlclose(self.coreHandle);
         self.coreHandle = NULL;
-        self.running = NO;
+        [self releaseProcessSlot];
         if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:5 userInfo:@{NSLocalizedDescriptionKey: @"Unable to register QEMU exit handler"}];
         return NO;
     }
@@ -272,7 +288,7 @@ static void *DBQEMUStartProcess(void *opaque) {
         DBQEMUWriteStage(self, message);
         dlclose(self.coreHandle);
         self.coreHandle = NULL;
-        self.running = NO;
+        [self releaseProcessSlot];
         if (error) *error = [NSError errorWithDomain:@"DroidBox.QEMU" code:6 userInfo:@{NSLocalizedDescriptionKey: message}];
         return NO;
     }
@@ -288,7 +304,7 @@ static void *DBQEMUStartProcess(void *opaque) {
             exitCode = -1;
         }
         self.coreHandle = NULL;
-        self.running = NO;
+        [self releaseProcessSlot];
         dispatch_async(dispatch_get_main_queue(), ^{ self.exitHandler(exitCode, message); });
     });
     return YES;
