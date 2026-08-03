@@ -3,9 +3,13 @@
 #import <dlfcn.h>
 #import <errno.h>
 #import <fcntl.h>
+#import <mach-o/loader.h>
+#import <mach-o/nlist.h>
 #import <pthread.h>
 #import <stdlib.h>
 #import <string.h>
+#import <sys/mman.h>
+#import <sys/stat.h>
 #import <unistd.h>
 
 typedef int (*DBQEMUInitFunction)(int, const char *[], const char *[]);
@@ -51,6 +55,89 @@ static void DBQEMUWriteStage(DBQEMUBridge *bridge, NSString *stage) {
     }
     fsync(descriptor);
     close(descriptor);
+}
+
+// UTM's QEMU core is intended to be initialized once per process. LiveContainer
+// can retain a framework image after replacing/restarting its guest app, leaving
+// these local option registries populated. A later qemu_init() then aborts with
+// "ran out of space in drive_config_groups". Since the symbols are local, read
+// their addresses from the loaded framework's Mach-O symbol table.
+static uintptr_t DBQEMULocalSymbolAddress(NSURL *binaryURL, const void *loadedSymbol, const char *wantedName) {
+    Dl_info imageInfo = {0};
+    if (dladdr(loadedSymbol, &imageInfo) == 0 || !imageInfo.dli_fbase) return 0;
+
+    int descriptor = open(binaryURL.fileSystemRepresentation, O_RDONLY);
+    if (descriptor < 0) return 0;
+    struct stat metadata = {0};
+    if (fstat(descriptor, &metadata) != 0 || metadata.st_size < (off_t)sizeof(struct mach_header_64)) {
+        close(descriptor);
+        return 0;
+    }
+    size_t fileSize = (size_t)metadata.st_size;
+    uint8_t *file = mmap(NULL, fileSize, PROT_READ, MAP_PRIVATE, descriptor, 0);
+    close(descriptor);
+    if (file == MAP_FAILED) return 0;
+
+    uintptr_t result = 0;
+    const struct mach_header_64 *header = (const struct mach_header_64 *)file;
+    if (header->magic != MH_MAGIC_64 || sizeof(*header) + header->sizeofcmds > fileSize) goto finished;
+
+    const struct symtab_command *symtab = NULL;
+    uint64_t textVMAddress = 0;
+    const uint8_t *commandBytes = file + sizeof(*header);
+    for (uint32_t index = 0; index < header->ncmds; index++) {
+        if (commandBytes + sizeof(struct load_command) > file + fileSize) goto finished;
+        const struct load_command *command = (const struct load_command *)commandBytes;
+        if (command->cmdsize < sizeof(*command) || commandBytes + command->cmdsize > file + fileSize) goto finished;
+        if (command->cmd == LC_SYMTAB && command->cmdsize >= sizeof(struct symtab_command)) {
+            symtab = (const struct symtab_command *)command;
+        } else if (command->cmd == LC_SEGMENT_64 && command->cmdsize >= sizeof(struct segment_command_64)) {
+            const struct segment_command_64 *segment = (const struct segment_command_64 *)command;
+            if (strncmp(segment->segname, SEG_TEXT, sizeof(segment->segname)) == 0) textVMAddress = segment->vmaddr;
+        }
+        commandBytes += command->cmdsize;
+    }
+    if (!symtab || symtab->symoff > fileSize || symtab->stroff > fileSize ||
+        (uint64_t)symtab->nsyms * sizeof(struct nlist_64) > fileSize - symtab->symoff ||
+        symtab->strsize > fileSize - symtab->stroff) goto finished;
+
+    const struct nlist_64 *symbols = (const struct nlist_64 *)(file + symtab->symoff);
+    const char *strings = (const char *)(file + symtab->stroff);
+    for (uint32_t index = 0; index < symtab->nsyms; index++) {
+        uint32_t stringIndex = symbols[index].n_un.n_strx;
+        if (stringIndex >= symtab->strsize) continue;
+        if (strcmp(strings + stringIndex, wantedName) == 0) {
+            uintptr_t slide = (uintptr_t)imageInfo.dli_fbase - (uintptr_t)textVMAddress;
+            result = slide + (uintptr_t)symbols[index].n_value;
+            break;
+        }
+    }
+
+finished:
+    munmap(file, fileSize);
+    return result;
+}
+
+static NSUInteger DBQEMUNonNullPointerCount(void *const *pointers, NSUInteger count) {
+    if (!pointers) return 0;
+    NSUInteger nonNull = 0;
+    for (NSUInteger index = 0; index < count; index++) {
+        if (pointers[index]) nonNull++;
+    }
+    return nonNull;
+}
+
+static void DBQEMUResetStaleOptionRegistries(DBQEMUBridge *bridge, NSURL *coreURL) {
+    void **driveGroups = (void **)DBQEMULocalSymbolAddress(coreURL, (const void *)bridge.qemuInit, "_drive_config_groups");
+    void **vmGroups = (void **)DBQEMULocalSymbolAddress(coreURL, (const void *)bridge.qemuInit, "_vm_config_groups");
+    NSUInteger driveCount = DBQEMUNonNullPointerCount(driveGroups, 5);
+    NSUInteger vmCount = DBQEMUNonNullPointerCount(vmGroups, 48);
+    DBQEMUWriteStage(bridge, [NSString stringWithFormat:@"option_registry_state drive=%lu vm=%lu", (unsigned long)driveCount, (unsigned long)vmCount]);
+
+    if (driveCount == 0 && vmCount == 0) return;
+    if (driveGroups) memset(driveGroups, 0, sizeof(void *) * 5);
+    if (vmGroups) memset(vmGroups, 0, sizeof(void *) * 48);
+    DBQEMUWriteStage(bridge, @"option_registry_reset stale LiveContainer QEMU state cleared");
 }
 
 static void *DBQEMUStartProcess(void *opaque) {
@@ -167,11 +254,27 @@ static void *DBQEMUStartProcess(void *opaque) {
     NSMutableArray<NSURL *> *candidates = [NSMutableArray array];
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
     for (NSURL *root in roots) {
-        NSURL *candidate = [[root URLByAppendingPathComponent:@"Frameworks" isDirectory:YES]
-            URLByAppendingPathComponent:@"qemu-x86_64-softmmu.framework/qemu-x86_64-softmmu"];
-        if (![seen containsObject:candidate.path]) {
-            [seen addObject:candidate.path];
-            [candidates addObject:candidate];
+        NSURL *frameworks = [root URLByAppendingPathComponent:@"Frameworks" isDirectory:YES];
+        NSArray<NSURL *> *entries = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:frameworks
+                                                               includingPropertiesForKeys:nil
+                                                                                  options:NSDirectoryEnumerationSkipsHiddenFiles
+                                                                                    error:nil];
+        NSArray<NSURL *> *versioned = [[entries filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSURL *entry, NSDictionary *bindings) {
+            return [entry.lastPathComponent hasPrefix:@"qemu-x86_64-softmmu-droidbox-"] && [entry.pathExtension isEqualToString:@"framework"];
+        }]] sortedArrayUsingComparator:^NSComparisonResult(NSURL *left, NSURL *right) {
+            return [right.lastPathComponent compare:left.lastPathComponent options:NSNumericSearch];
+        }];
+        for (NSURL *framework in versioned) {
+            NSURL *candidate = [framework URLByAppendingPathComponent:framework.URLByDeletingPathExtension.lastPathComponent];
+            if (![seen containsObject:candidate.path]) {
+                [seen addObject:candidate.path];
+                [candidates addObject:candidate];
+            }
+        }
+        NSURL *legacyCandidate = [frameworks URLByAppendingPathComponent:@"qemu-x86_64-softmmu.framework/qemu-x86_64-softmmu"];
+        if (![seen containsObject:legacyCandidate.path]) {
+            [seen addObject:legacyCandidate.path];
+            [candidates addObject:legacyCandidate];
         }
     }
     return candidates;
@@ -256,6 +359,7 @@ static void *DBQEMUStartProcess(void *opaque) {
         return NO;
     }
     DBQEMUWriteStage(self, @"symbol_resolution_end");
+    DBQEMUResetStaleOptionRegistries(self, coreURL);
 
     __weak typeof(self) weakSelf = self;
     if (atexit_b(^{

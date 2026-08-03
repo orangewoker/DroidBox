@@ -80,3 +80,5 @@ Android-x86 9.0-r2 Runtime，QEMU 启动后通过本机 QMP、ADB 和 VNC/RFB �
 1.3.5 将 QEMU 的标准输出和错误输出临时写入桥接日志，并记录完整启动参数，便于定位 QEMU 在初始化阶段主动退出的原因。
 
 1.3.6 修复 SwiftUI 重复触发 Android VM 启动的问题，并在控制器和原生 QEMU 桥接层增加单实例保护；QEMU 原始错误会直接显示在启动失败界面。
+
+1.3.7 为每个构建使用独立的 QEMU framework 标识，避免 LiveContainer 复用旧 QEMU 全局状态；启动前还会检测并清理残留的 QEMU 配置注册表，修复 `ran out of space in drive_config_groups`。

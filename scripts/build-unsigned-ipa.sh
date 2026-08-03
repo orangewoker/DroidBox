@@ -15,10 +15,25 @@ xcodebuild -project "$ROOT/DroidBox.xcodeproj" -scheme DroidBox -configuration R
 
 APP="$DERIVED/Build/Products/Release-iphoneos/DroidBox.app"
 test -d "$APP"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")"
+BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")"
 
 if [ -d "$ROOT/Vendor/QEMUCore/Frameworks" ]; then
   mkdir -p "$APP/Frameworks"
   ditto "$ROOT/Vendor/QEMUCore/Frameworks" "$APP/Frameworks"
+  # LiveContainer may retain a dlopened framework across guest app updates. A
+  # build-specific install name prevents dyld from reusing an older QEMU image
+  # whose one-shot global registries have already been populated.
+  QEMU_SOURCE="$APP/Frameworks/qemu-x86_64-softmmu.framework"
+  QEMU_NAME="qemu-x86_64-softmmu-droidbox-b$BUILD"
+  QEMU_DEST="$APP/Frameworks/$QEMU_NAME.framework"
+  test -f "$QEMU_SOURCE/qemu-x86_64-softmmu"
+  mv "$QEMU_SOURCE" "$QEMU_DEST"
+  mv "$QEMU_DEST/qemu-x86_64-softmmu" "$QEMU_DEST/$QEMU_NAME"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $QEMU_NAME" "$QEMU_DEST/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName $QEMU_NAME" "$QEMU_DEST/Info.plist" || true
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droidbox.qemu.b$BUILD" "$QEMU_DEST/Info.plist" || true
+  install_name_tool -id "@rpath/$QEMU_NAME.framework/$QEMU_NAME" "$QEMU_DEST/$QEMU_NAME"
 fi
 if [ -d "$ROOT/Vendor/QEMUCore/share" ]; then
   mkdir -p "$APP/qemu"
@@ -30,11 +45,9 @@ if [ -d "$ROOT/Vendor/QEMUCore/licenses" ]; then
 fi
 ditto "$APP" "$DIST/Payload/DroidBox.app"
 (cd "$DIST" && zip -qry "DroidBox-unsigned.ipa" Payload)
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")"
 cp "$DIST/DroidBox-unsigned.ipa" "$DIST/DroidBox-$VERSION-unsigned.ipa"
 shasum -a 256 "$DIST/DroidBox-unsigned.ipa" | awk '{print $1}' > "$DIST/DroidBox-unsigned.sha256"
 
-BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")"
 cat > "$DIST/build-info.json" <<EOF
 {"name":"DroidBox","version":"$VERSION","build":"$BUILD","commit":"${GITHUB_SHA:-unknown}","sdk":"$(xcrun --sdk iphoneos --show-sdk-version)","xcode":"$(xcodebuild -version | tr '\n' ' ')"}
 EOF
