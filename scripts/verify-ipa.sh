@@ -14,7 +14,10 @@ file "$APP/DroidBox" | grep -q 'arm64'
 test -f "$APP/j2mejs/index.html"
 test -f "$APP/j2mejs/java/classes.jar"
 test -f "$APP/ManicJ2MESkin/iphone_edgetoedge_portrait.pdf"
-test -f "$APP/Frameworks/qemu-x86_64-softmmu.framework/qemu-x86_64-softmmu"
+QEMU_CORES=("$APP/Frameworks"/qdb*.framework/qdb*)
+test "${#QEMU_CORES[@]}" -eq 1
+test -f "${QEMU_CORES[0]}"
+otool -D "${QEMU_CORES[0]}" | grep -Eq '^@rpath/qdb[0-9]+\.framework/qdb[0-9]+$'
 test -f "$APP/qemu/bios.bin"
 test -f "$APP/ThirdPartyLicenses/UTM-QEMU/UTM-LICENSE"
 if codesign -dvv "$APP" >/dev/null 2>&1; then echo "Unexpected code signature" >&2; exit 1; fi
