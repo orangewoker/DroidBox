@@ -260,7 +260,7 @@ static void *DBQEMUStartProcess(void *opaque) {
                                                                                   options:NSDirectoryEnumerationSkipsHiddenFiles
                                                                                     error:nil];
         NSArray<NSURL *> *versioned = [[entries filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSURL *entry, NSDictionary *bindings) {
-            return [entry.lastPathComponent hasPrefix:@"qemu-x86_64-softmmu-droidbox-"] && [entry.pathExtension isEqualToString:@"framework"];
+            return ([entry.lastPathComponent hasPrefix:@"qdb"] || [entry.lastPathComponent hasPrefix:@"qemu-x86_64-softmmu-droidbox-"]) && [entry.pathExtension isEqualToString:@"framework"];
         }]] sortedArrayUsingComparator:^NSComparisonResult(NSURL *left, NSURL *right) {
             return [right.lastPathComponent compare:left.lastPathComponent options:NSNumericSearch];
         }];

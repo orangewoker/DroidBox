@@ -25,14 +25,16 @@ if [ -d "$ROOT/Vendor/QEMUCore/Frameworks" ]; then
   # build-specific install name prevents dyld from reusing an older QEMU image
   # whose one-shot global registries have already been populated.
   QEMU_SOURCE="$APP/Frameworks/qemu-x86_64-softmmu.framework"
-  QEMU_NAME="qemu-x86_64-softmmu-droidbox-b$BUILD"
+  # Keep the new Mach-O install name shorter than UTM's original name because
+  # the release binary was not linked with extra load-command header padding.
+  QEMU_NAME="qdb$BUILD"
   QEMU_DEST="$APP/Frameworks/$QEMU_NAME.framework"
   test -f "$QEMU_SOURCE/qemu-x86_64-softmmu"
   mv "$QEMU_SOURCE" "$QEMU_DEST"
   mv "$QEMU_DEST/qemu-x86_64-softmmu" "$QEMU_DEST/$QEMU_NAME"
   /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $QEMU_NAME" "$QEMU_DEST/Info.plist"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleName $QEMU_NAME" "$QEMU_DEST/Info.plist" || true
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droidbox.qemu.b$BUILD" "$QEMU_DEST/Info.plist" || true
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droidbox.qemu.b$BUILD" "$QEMU_DEST/Info.plist" || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.droidbox.qemu.b$BUILD" "$QEMU_DEST/Info.plist"
   install_name_tool -id "@rpath/$QEMU_NAME.framework/$QEMU_NAME" "$QEMU_DEST/$QEMU_NAME"
 fi
 if [ -d "$ROOT/Vendor/QEMUCore/share" ]; then
