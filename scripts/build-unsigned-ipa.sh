@@ -35,7 +35,23 @@ if [ -d "$ROOT/Vendor/QEMUCore/Frameworks" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $QEMU_NAME" "$QEMU_DEST/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.droidbox.qemu.b$BUILD" "$QEMU_DEST/Info.plist" || \
     /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.droidbox.qemu.b$BUILD" "$QEMU_DEST/Info.plist"
-  install_name_tool -id "@rpath/$QEMU_NAME.framework/$QEMU_NAME" "$QEMU_DEST/$QEMU_NAME"
+  # install_name_tool cannot rewrite this very large prebuilt image reliably on
+  # current runners. Replace only the fixed-size LC_ID_DYLIB string in place.
+  python3 - "$QEMU_DEST/$QEMU_NAME" "@rpath/$QEMU_NAME.framework/$QEMU_NAME" <<'PY'
+import pathlib
+import sys
+
+binary = pathlib.Path(sys.argv[1])
+replacement = sys.argv[2].encode("utf-8")
+original = b"@rpath/qemu-x86_64-softmmu.framework/qemu-x86_64-softmmu"
+if len(replacement) > len(original):
+    raise SystemExit("versioned QEMU install name is too long")
+data = binary.read_bytes()
+if data.count(original) != 1:
+    raise SystemExit("QEMU LC_ID_DYLIB string was not found exactly once")
+binary.write_bytes(data.replace(original, replacement + b"\0" * (len(original) - len(replacement)), 1))
+PY
+  otool -D "$QEMU_DEST/$QEMU_NAME" | grep -Fx "@rpath/$QEMU_NAME.framework/$QEMU_NAME"
 fi
 if [ -d "$ROOT/Vendor/QEMUCore/share" ]; then
   mkdir -p "$APP/qemu"
